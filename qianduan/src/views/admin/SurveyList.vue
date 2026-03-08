@@ -1,11 +1,26 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getSurveyList, type SurveyListItemResult } from '../../api/survey'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import {
+  createSurveyDraft,
+  exportSurveyStatsExcel,
+  getSurveyDetail,
+  getSurveyList,
+  type QuestionSchemaItem,
+  type SurveyListItemResult
+} from '../../api/survey'
+import { useSettingsStore } from '../../stores/settings'
+import { useAuthStore } from '../../stores/auth'
+import { usePermissionStore } from '../../stores/permission'
 import { useSurveyStore } from '../../stores/survey'
+import { appendOperationLog } from '../../utils/log'
 
 const router = useRouter()
+const authStore = useAuthStore()
+const permissionStore = usePermissionStore()
 const surveyStore = useSurveyStore()
+const settingsStore = useSettingsStore()
 
 type SurveyStatus = 'DRAFT' | 'PUBLISHED' | 'CLOSED'
 type StatusFilter = 'ALL' | SurveyStatus
@@ -16,8 +31,13 @@ const keyword = ref('')
 const statusFilter = ref<StatusFilter>('ALL')
 
 const currentPage = ref(1)
-const pageSize = ref(5)
+const pageSize = ref(20)
 const loading = ref(false)
+const exportingSurveyId = ref<number | null>(null)
+const duplicatingSurveyId = ref<number | null>(null)
+const linkDialogVisible = ref(false)
+const linkSurveyTitle = ref('')
+const linkText = ref('')
 
 const surveyList = ref<SurveyItem[]>([])
 
@@ -31,6 +51,14 @@ const filteredSurveyList = computed(() => {
 
     return matchKeyword && matchStatus
   })
+})
+
+const canManageSurveyAuth = computed(() => {
+  const role = authStore.role
+  const isKnownRole = role === 'ROLE1' || role === 'ROLE2' || role === 'ROLE3'
+  if (!isKnownRole) return false
+  const permissions = permissionStore.rolePermissionMap[role] || []
+  return permissions.includes('survey:auth')
 })
 
 const total = computed(() => filteredSurveyList.value.length)
@@ -94,6 +122,11 @@ function handleEdit(row: SurveyItem) {
 }
 
 function handleAuth(row: SurveyItem) {
+  if (!canManageSurveyAuth.value) {
+    alert('当前角色没有问卷授权权限')
+    return
+  }
+
   router.push(`/admin/surveys/${row.id}/auth`)
 }
 
@@ -105,6 +138,115 @@ function handleStats(row: SurveyItem) {
   router.push(`/admin/surveys/${row.id}/stats`)
 }
 
+function getSurveyLinkBase() {
+  const domain = settingsStore.settings.systemDomain.trim()
+  const fallback = window.location.origin
+
+  if (!domain) {
+    return fallback
+  }
+
+  if (/^https?:\/\//i.test(domain)) {
+    return domain
+  }
+
+  return `https://${domain}`
+}
+
+function buildSurveyLink(id: number) {
+  const base = getSurveyLinkBase().replace(/\/+$/, '')
+  return `${base}/m/surveys/${id}`
+}
+
+function handleShowSurveyLink(row: SurveyItem) {
+  linkSurveyTitle.value = row.title
+  linkText.value = buildSurveyLink(row.id)
+  linkDialogVisible.value = true
+}
+
+function cloneQuestions(questions: QuestionSchemaItem[]): QuestionSchemaItem[] {
+  return questions.map((question) => ({
+    id: question.id,
+    type: question.type,
+    title: question.title,
+    required: question.required,
+    options: question.options.map((option) => ({
+      id: option.id,
+      label: option.label
+    }))
+  }))
+}
+
+async function handleDuplicate(row: SurveyItem) {
+  try {
+    duplicatingSurveyId.value = row.id
+
+    const detailResponse = await getSurveyDetail(row.id)
+    if (detailResponse.code !== 20000) {
+      alert(detailResponse.message || '读取问卷详情失败')
+      return
+    }
+
+    const source = detailResponse.data
+    const createResponse = await createSurveyDraft({
+      title: `${source.title}（副本）`,
+      description: source.description,
+      questions: cloneQuestions(source.schema)
+    })
+
+    if (createResponse.code !== 20000) {
+      alert(createResponse.message || '复制问卷失败')
+      return
+    }
+
+    const created = createResponse.data
+    surveyStore.createSurvey({
+      id: created.id,
+      title: created.title,
+      description: created.description,
+      schema: created.schema,
+      creatorId: created.creatorId
+    })
+
+    appendOperationLog({
+      module: 'SURVEY',
+      action: 'CREATE',
+      target: created.title
+    })
+
+    await loadSurveyList()
+    alert(`已复制为草稿：${created.title}`)
+  } catch (error) {
+    alert('复制问卷失败')
+  } finally {
+    duplicatingSurveyId.value = null
+  }
+}
+
+async function handleExport(row: SurveyItem) {
+  try {
+    exportingSurveyId.value = row.id
+    const response = await exportSurveyStatsExcel(row.id)
+
+    if (response.code !== 20000) {
+      alert(response.message || '导出失败')
+      return
+    }
+
+    appendOperationLog({
+      module: 'SURVEY',
+      action: 'UPDATE',
+      target: `${row.title} 导出答卷数据`
+    })
+
+    alert('Excel 导出成功')
+  } catch (error) {
+    alert('导出失败')
+  } finally {
+    exportingSurveyId.value = null
+  }
+}
+
 function handlePublish(row: SurveyItem) {
   if (row.status === 'PUBLISHED') {
     alert('该问卷已经是已发布状态')
@@ -112,6 +254,11 @@ function handlePublish(row: SurveyItem) {
   }
 
   surveyStore.publishSurvey(row.id)
+  appendOperationLog({
+    module: 'SURVEY',
+    action: 'PUBLISH',
+    target: row.title
+  })
   void loadSurveyList()
   alert(`已发布：${row.title}`)
 }
@@ -123,6 +270,11 @@ function handleClose(row: SurveyItem) {
   }
 
   surveyStore.closeSurvey(row.id)
+  appendOperationLog({
+    module: 'SURVEY',
+    action: 'CLOSE',
+    target: row.title
+  })
   void loadSurveyList()
   alert(`已关闭：${row.title}`)
 }
@@ -132,6 +284,11 @@ function handleDelete(row: SurveyItem) {
   if (!ok) return
 
   surveyStore.deleteSurvey(row.id)
+  appendOperationLog({
+    module: 'SURVEY',
+    action: 'DELETE',
+    target: row.title
+  })
   void loadSurveyList()
   alert(`已删除：${row.title}`)
 }
@@ -208,7 +365,11 @@ onMounted(() => {
 
     <el-card v-loading="loading">
       <el-table :data="pagedSurveyList" style="width: 100%">
-        <el-table-column prop="id" label="ID" width="100" />
+        <el-table-column prop="id" label="ID" width="150">
+          <template #default="scope">
+            <span style="white-space: nowrap;">{{ scope.row.id }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="title" label="问卷标题" min-width="220" />
         <el-table-column prop="status" label="状态" width="120">
           <template #default="scope">
@@ -218,18 +379,34 @@ onMounted(() => {
           </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="180" />
-        <el-table-column label="操作" width="600">
+        <el-table-column label="操作" width="900">
           <template #default="scope">
             <el-button size="small" @click="handleEdit(scope.row)">
               编辑
             </el-button>
 
-            <el-button size="small" @click="handleAuth(scope.row)">
+            <el-button
+              size="small"
+              :loading="duplicatingSurveyId === scope.row.id"
+              @click="handleDuplicate(scope.row)"
+            >
+              复制
+            </el-button>
+
+            <el-button
+              size="small"
+              :disabled="!canManageSurveyAuth"
+              @click="handleAuth(scope.row)"
+            >
               授权
             </el-button>
 
             <el-button size="small" type="primary" @click="handleOpenMobile(scope.row)">
               访问问卷
+            </el-button>
+
+            <el-button size="small" @click="handleShowSurveyLink(scope.row)">
+              问卷链接
             </el-button>
 
             <el-button size="small" type="success" @click="handlePublish(scope.row)">
@@ -242,6 +419,15 @@ onMounted(() => {
 
             <el-button size="small" type="info" @click="handleStats(scope.row)">
               统计
+            </el-button>
+
+            <el-button
+              size="small"
+              type="primary"
+              :loading="exportingSurveyId === scope.row.id"
+              @click="handleExport(scope.row)"
+            >
+              导出 Excel
             </el-button>
 
             <el-button size="small" type="danger" @click="handleDelete(scope.row)">
@@ -259,17 +445,34 @@ onMounted(() => {
       </div>
 
       <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
-        <el-pagination
-          background
-          layout="total, sizes, prev, pager, next"
-          :total="total"
-          :page-size="pageSize"
-          :current-page="currentPage"
-          :page-sizes="[5, 10, 20]"
-          @current-change="handlePageChange"
-          @size-change="handleSizeChange"
-        />
+        <el-config-provider :locale="zhCn">
+          <el-pagination
+            background
+            layout="total, sizes, prev, pager, next"
+            :total="total"
+            :page-size="pageSize"
+            :current-page="currentPage"
+            :page-sizes="[10, 20, 50, 100]"
+            @current-change="handlePageChange"
+            @size-change="handleSizeChange"
+          />
+        </el-config-provider>
       </div>
     </el-card>
+
+    <el-dialog v-model="linkDialogVisible" title="问卷链接" width="560px">
+      <div style="margin-bottom: 12px; color: #666;">
+        {{ linkSurveyTitle }}
+      </div>
+      <el-input :model-value="linkText" readonly />
+      <div style="margin-top: 12px; color: #999; font-size: 12px;">
+        可复制该链接发送给答题用户。
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="linkDialogVisible = false">
+          关闭
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>

@@ -20,58 +20,25 @@ export interface LogItem {
 }
 
 const STORAGE_KEY = 'SYSTEM_LOG_LIST'
+const LEGACY_MOCK_LOG_SIGNATURES = new Set([
+  'admin|SURVEY|CREATE|2026届毕业生满意度调查|2026-03-07 09:00:00',
+  'admin|SURVEY|PUBLISH|食堂服务评价问卷|2026-03-07 10:20:00',
+  'teacher01|USER|UPDATE|张老师|2026-03-07 11:05:00',
+  'admin|PERMISSION|UPDATE|ROLE3 权限配置|2026-03-07 13:40:00',
+  'admin|SYSTEM|LOGIN|后台登录|2026-03-07 14:00:00',
+  'admin|SURVEY|DELETE|校园活动反馈表|2026-03-07 15:30:00'
+])
 
 function getDefaultLogs(): LogItem[] {
-  return [
-    {
-      id: 1,
-      operator: 'admin',
-      module: 'SURVEY',
-      action: 'CREATE',
-      target: '2026届毕业生满意度调查',
-      createdAt: '2026-03-07 09:00:00'
-    },
-    {
-      id: 2,
-      operator: 'admin',
-      module: 'SURVEY',
-      action: 'PUBLISH',
-      target: '食堂服务评价问卷',
-      createdAt: '2026-03-07 10:20:00'
-    },
-    {
-      id: 3,
-      operator: 'teacher01',
-      module: 'USER',
-      action: 'UPDATE',
-      target: '张老师',
-      createdAt: '2026-03-07 11:05:00'
-    },
-    {
-      id: 4,
-      operator: 'admin',
-      module: 'PERMISSION',
-      action: 'UPDATE',
-      target: 'ROLE3 权限配置',
-      createdAt: '2026-03-07 13:40:00'
-    },
-    {
-      id: 5,
-      operator: 'admin',
-      module: 'SYSTEM',
-      action: 'LOGIN',
-      target: '后台登录',
-      createdAt: '2026-03-07 14:00:00'
-    },
-    {
-      id: 6,
-      operator: 'admin',
-      module: 'SURVEY',
-      action: 'DELETE',
-      target: '校园活动反馈表',
-      createdAt: '2026-03-07 15:30:00'
-    }
-  ]
+  return []
+}
+
+function getLogSignature(log: LogItem) {
+  return `${log.operator}|${log.module}|${log.action}|${log.target}|${log.createdAt}`
+}
+
+function removeLegacyMockLogs(logs: LogItem[]) {
+  return logs.filter((item) => !LEGACY_MOCK_LOG_SIGNATURES.has(getLogSignature(item)))
 }
 
 function ensureStorage() {
@@ -82,7 +49,17 @@ function ensureStorage() {
 
 function readLogs(): LogItem[] {
   ensureStorage()
-  return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+  const logs = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as unknown
+  if (!Array.isArray(logs)) return []
+
+  const normalized = logs as LogItem[]
+  const cleaned = removeLegacyMockLogs(normalized)
+
+  if (cleaned.length !== normalized.length) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned))
+  }
+
+  return cleaned
 }
 
 function writeLogs(logs: LogItem[]) {
@@ -106,7 +83,7 @@ export const useLogStore = defineStore('log', {
     addLog(log: Omit<LogItem, 'id'>) {
       this.logList = [
         {
-          id: Date.now(),
+          id: Date.now() + Math.floor(Math.random() * 1000),
           ...log
         },
         ...this.logList

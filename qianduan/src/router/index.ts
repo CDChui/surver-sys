@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { usePermissionStore } from '../stores/permission'
+import { useSettingsStore } from '../stores/settings'
 import MobileHome from '../views/mobile/Home.vue'
 import SurveyPage from '../views/mobile/Survey.vue'
 import SubmitSuccess from '../views/mobile/SubmitSuccess.vue'
@@ -8,6 +10,7 @@ import BlockedDuplicate from '../views/mobile/BlockedDuplicate.vue'
 import ReviewSubmitted from '../views/mobile/ReviewSubmitted.vue'
 import ErrorPage from '../views/mobile/ErrorPage.vue'
 import SsoCallback from '../views/auth/SsoCallback.vue'
+import LogoutPage from '../views/auth/Logout.vue'
 import AdminLogin from '../views/admin/Login.vue'
 import AdminLayout from '../views/admin/AdminLayout.vue'
 import Dashboard from '../views/admin/Dashboard.vue'
@@ -20,6 +23,13 @@ import UserManagement from '../views/admin/UserManagement.vue'
 import PermissionManagement from '../views/admin/PermissionManagement.vue'
 import LogManagement from '../views/admin/LogManagement.vue'
 import SystemSettings from '../views/admin/SystemSettings.vue'
+import BasicSettings from '../views/admin/settings/BasicSettings.vue'
+import ThirdPartyIntegration from '../views/admin/settings/ThirdPartyIntegration.vue'
+import { buildLoginPathWithRedirect, getPostLoginPath } from '../utils/auth-redirect'
+import {
+  beginThirdPartyLogin,
+  shouldAutoThirdPartyForAdmin
+} from '../utils/oauth-login'
 
 const routes = [
   {
@@ -32,7 +42,10 @@ const routes = [
   },
   {
     path: '/m/surveys/:id',
-    component: SurveyPage
+    component: SurveyPage,
+    meta: {
+      requiresLogin: true
+    }
   },
   {
     path: '/m/success',
@@ -57,6 +70,10 @@ const routes = [
   {
     path: '/auth/sso/callback',
     component: SsoCallback
+  },
+  {
+    path: '/auth/logout',
+    component: LogoutPage
   },
   {
     path: '/local-admin/login',
@@ -99,7 +116,10 @@ const routes = [
       },
       {
         path: 'surveys/:id/auth',
-        component: SurveyAuth
+        component: SurveyAuth,
+        meta: {
+          requiredPermission: 'survey:auth'
+        }
       },
       {
         path: 'users',
@@ -115,7 +135,21 @@ const routes = [
       },
       {
         path: 'settings',
-        component: SystemSettings
+        component: SystemSettings,
+        children: [
+          {
+            path: '',
+            redirect: '/admin/settings/basic'
+          },
+          {
+            path: 'basic',
+            component: BasicSettings
+          },
+          {
+            path: 'integration',
+            component: ThirdPartyIntegration
+          }
+        ]
       }
     ]
   }
@@ -128,10 +162,22 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
+  const permissionStore = usePermissionStore()
+  const settingsStore = useSettingsStore()
   const hasToken = !!authStore.token
 
-  if (to.meta.requiresAuth && !hasToken) {
-    next('/local-admin/login')
+  if ((to.meta.requiresAuth || to.meta.requiresLogin) && !hasToken) {
+    if (to.meta.requiresAuth && shouldAutoThirdPartyForAdmin(settingsStore.settings)) {
+      const oauthResult = beginThirdPartyLogin(settingsStore.settings, to.fullPath)
+
+      if (oauthResult.ok) {
+        window.location.href = oauthResult.url
+        next(false)
+        return
+      }
+    }
+
+    next(buildLoginPathWithRedirect(to.fullPath))
     return
   }
 
@@ -141,13 +187,19 @@ router.beforeEach((to, from, next) => {
   }
 
   if (to.meta.guestOnly && hasToken) {
-    if (authStore.isRole1) {
-      next('/m')
+    next(getPostLoginPath(authStore.role, to.query.redirect))
+    return
+  }
+
+  if (typeof to.meta.requiredPermission === 'string') {
+    const role = authStore.role
+    const isKnownRole = role === 'ROLE1' || role === 'ROLE2' || role === 'ROLE3'
+    const rolePermissions = isKnownRole ? permissionStore.rolePermissionMap[role] || [] : []
+
+    if (!rolePermissions.includes(to.meta.requiredPermission)) {
+      next('/admin/surveys')
       return
     }
-
-    next('/admin/dashboard')
-    return
   }
 
   next()

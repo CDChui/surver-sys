@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { API_BASE } from '../config/env'
+import { buildLoginPathWithRedirect } from '../utils/auth-redirect'
 
 const request = axios.create({
   baseURL: API_BASE,
@@ -12,16 +13,40 @@ function getCurrentSurveyIdFromPath() {
 }
 
 function redirectTo(path: string) {
-  if (window.location.pathname !== path) {
+  const currentPath = `${window.location.pathname}${window.location.search}`
+
+  if (currentPath !== path) {
     window.location.href = path
   }
+}
+
+function clearAuthStorage() {
+  localStorage.removeItem('AUTH_TOKEN')
+  localStorage.removeItem('AUTH_ROLE')
+  localStorage.removeItem('AUTH_USERNAME')
+  localStorage.removeItem('AUTH_REALNAME')
+  localStorage.removeItem('AUTH_USER_ID')
+}
+
+function redirectToLoginEntryByCurrentPath() {
+  const currentPath = `${window.location.pathname}${window.location.search}`
+  const isAdminPath = window.location.pathname.startsWith('/admin')
+
+  clearAuthStorage()
+
+  if (isAdminPath) {
+    window.location.href = currentPath
+    return
+  }
+
+  redirectTo(buildLoginPathWithRedirect(currentPath))
 }
 
 function handleBusinessCode(code: number, message: string) {
   const surveyId = getCurrentSurveyIdFromPath()
 
   if (code === 40101 || code === 40102) {
-    redirectTo('/local-admin/login')
+    redirectToLoginEntryByCurrentPath()
     return Promise.reject(new Error(message || '登录已失效'))
   }
 
@@ -77,7 +102,7 @@ request.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      redirectTo('/local-admin/login')
+      redirectToLoginEntryByCurrentPath()
     }
 
     return Promise.reject(error)

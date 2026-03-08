@@ -1,21 +1,27 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { getLogList, type LogAction, type LogItemResult, type LogModule } from '../../api/log'
+import { useLogStore } from '../../stores/log'
+import { useUserStore } from '../../stores/user'
 
 type ModuleFilter = 'ALL' | LogModule
 type ActionFilter = 'ALL' | LogAction
 
 type LogRow = LogItemResult
 
+const logStore = useLogStore()
+const userStore = useUserStore()
 const keyword = ref('')
 const moduleFilter = ref<ModuleFilter>('ALL')
 const actionFilter = ref<ActionFilter>('ALL')
 
 const currentPage = ref(1)
-const pageSize = ref(5)
+const pageSize = ref(20)
 const loading = ref(false)
 
 const logList = ref<LogRow[]>([])
+let stopLogSubscribe: (() => void) | null = null
 
 const filteredLogList = computed(() => {
   const text = keyword.value.trim().toLowerCase()
@@ -95,6 +101,11 @@ function getActionTagType(action: LogAction) {
   return 'danger'
 }
 
+function getOperatorText(operator: string) {
+  const match = userStore.userList.find((item) => item.username === operator)
+  return match?.realName || operator
+}
+
 function handleResetFilter() {
   keyword.value = ''
   moduleFilter.value = 'ALL'
@@ -109,8 +120,28 @@ function handleSizeChange(size: number) {
   pageSize.value = size
 }
 
+function handleStorageChange(event: StorageEvent) {
+  if (event.key === 'SYSTEM_LOG_LIST') {
+    void loadLogList()
+  }
+}
+
+function startAutoRefresh() {
+  stopLogSubscribe = logStore.$subscribe(() => {
+    logList.value = [...logStore.logList]
+  })
+}
+
 onMounted(() => {
   void loadLogList()
+  startAutoRefresh()
+  window.addEventListener('storage', handleStorageChange)
+})
+
+onUnmounted(() => {
+  stopLogSubscribe?.()
+  stopLogSubscribe = null
+  window.removeEventListener('storage', handleStorageChange)
 })
 </script>
 
@@ -167,7 +198,11 @@ onMounted(() => {
     <el-card v-loading="loading">
       <el-table :data="pagedLogList" style="width: 100%">
         <el-table-column prop="id" label="ID" width="90" />
-        <el-table-column prop="operator" label="操作人" width="140" />
+        <el-table-column prop="operator" label="操作人" width="140">
+          <template #default="scope">
+            {{ getOperatorText(scope.row.operator) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="module" label="模块" width="140">
           <template #default="scope">
             {{ getModuleText(scope.row.module) }}
@@ -192,16 +227,18 @@ onMounted(() => {
       </div>
 
       <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
-        <el-pagination
-          background
-          layout="total, sizes, prev, pager, next"
-          :total="total"
-          :page-size="pageSize"
-          :current-page="currentPage"
-          :page-sizes="[5, 10, 20]"
-          @current-change="handlePageChange"
-          @size-change="handleSizeChange"
-        />
+        <el-config-provider :locale="zhCn">
+          <el-pagination
+            background
+            layout="total, sizes, prev, pager, next"
+            :total="total"
+            :page-size="pageSize"
+            :current-page="currentPage"
+            :page-sizes="[10, 20, 50, 100]"
+            @current-change="handlePageChange"
+            @size-change="handleSizeChange"
+          />
+        </el-config-provider>
       </div>
     </el-card>
   </div>

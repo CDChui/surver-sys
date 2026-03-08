@@ -9,6 +9,7 @@ import {
   type QuestionType
 } from '../../api/survey'
 import { useSurveyStore } from '../../stores/survey'
+import { appendOperationLog } from '../../utils/log'
 
 const route = useRoute()
 const router = useRouter()
@@ -42,7 +43,8 @@ async function loadSurveyDetail() {
   try {
     pageLoading.value = true
 
-    const result = await getSurveyDetail(surveyId.value)
+    const response = await getSurveyDetail(surveyId.value)
+    const result = response.data
 
     form.title = result.title
     form.description = result.description
@@ -72,19 +74,26 @@ async function handleSaveEdit() {
   try {
     loading.value = true
 
-    const result = await updateSurvey({
+    const response = await updateSurvey({
       id: surveyId.value,
       title: form.title,
       description: form.description,
       questions: form.questions
     })
 
+    const result = response.data
+
     surveyStore.updateSurvey({
       id: result.id,
       title: result.title,
       description: result.description,
-      status: result.status,
       schema: result.schema
+    })
+
+    appendOperationLog({
+      module: 'SURVEY',
+      action: 'UPDATE',
+      target: result.title
     })
 
     alert(`修改成功，问卷ID：${result.id}，题目数：${result.schema.length}`)
@@ -186,7 +195,7 @@ function getQuestionTypeText(type: QuestionType) {
 }
 
 function handleBack() {
-  router.push('/admin')
+  router.push('/admin/surveys')
 }
 
 onMounted(() => {

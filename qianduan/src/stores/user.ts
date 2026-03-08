@@ -74,6 +74,16 @@ function writeUsers(users: UserItem[]) {
   localStorage.setItem(USER_LIST_KEY, JSON.stringify(users))
 }
 
+function getNowText() {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  const hh = String(now.getHours()).padStart(2, '0')
+  const mm = String(now.getMinutes()).padStart(2, '0')
+  return `${y}-${m}-${d} ${hh}:${mm}`
+}
+
 export const useUserStore = defineStore('user', {
   state: () => ({
     userList: readUsers() as UserItem[]
@@ -94,6 +104,31 @@ export const useUserStore = defineStore('user', {
 
     persist() {
       writeUsers(this.userList)
+    },
+
+    createUser(payload: {
+      username: string
+      realName: string
+      role: UserRole
+      status: UserStatus
+    }) {
+      const list = Array.isArray(this.userList) ? this.userList : []
+      const nextId =
+        list.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1
+
+      this.userList = [
+        {
+          id: nextId,
+          username: payload.username,
+          realName: payload.realName,
+          role: payload.role,
+          status: payload.status,
+          createdAt: getNowText()
+        },
+        ...list
+      ]
+
+      this.persist()
     },
 
     toggleUserStatus(id: number) {

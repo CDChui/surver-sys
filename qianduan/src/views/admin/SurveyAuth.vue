@@ -9,6 +9,7 @@ import {
 } from '../../api/survey-auth'
 import { getUserList, type UserItemResult } from '../../api/user'
 import { useSurveyAuthStore } from '../../stores/survey-auth'
+import { appendOperationLog } from '../../utils/log'
 
 const route = useRoute()
 const router = useRouter()
@@ -112,6 +113,12 @@ async function handleAuthorize(user: UserItemResult) {
       authorizedUsers.value = reloadResponse.data
     }
 
+    appendOperationLog({
+      module: 'PERMISSION',
+      action: 'UPDATE',
+      target: `${surveyTitle.value} -> 授权 ${user.realName}`
+    })
+
     alert(`已授权 ${user.realName} 管理当前问卷`)
   } catch (error) {
     alert('授权失败')
@@ -136,6 +143,12 @@ async function handleRevoke(userId: number, realName: string) {
     if (reloadResponse.code === 20000) {
       authorizedUsers.value = reloadResponse.data
     }
+
+    appendOperationLog({
+      module: 'PERMISSION',
+      action: 'UPDATE',
+      target: `${surveyTitle.value} -> 撤销 ${realName}`
+    })
 
     alert(`已撤销 ${realName} 的问卷管理权限`)
   } catch (error) {

@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import { useSettingsStore } from '../../stores/settings'
+import { appendOperationLog } from '../../utils/log'
 
 const route = useRoute()
 const router = useRouter()
@@ -48,9 +49,13 @@ function goSettings() {
 }
 
 function handleLogout() {
+  appendOperationLog({
+    module: 'SYSTEM',
+    action: 'LOGOUT',
+    target: '后台退出登录'
+  })
   authStore.clearToken()
-  alert('已退出登录')
-  router.push('/local-admin/login')
+  router.push('/auth/logout')
 }
 </script>
 

@@ -8,6 +8,20 @@ export interface PermissionGroup {
 }
 
 const STORAGE_KEY = 'ROLE_PERMISSION_MAP'
+const ROLE3_FIXED_PERMISSIONS = [
+  'survey:list',
+  'survey:create',
+  'survey:edit',
+  'survey:stats',
+  'survey:publish',
+  'survey:delete',
+  'survey:auth',
+  'user:list',
+  'user:edit',
+  'user:delete',
+  'permission:manage',
+  'survey:fill'
+]
 
 function getDefaultMap(): Record<RoleCode, string[]> {
   return {
@@ -19,19 +33,18 @@ function getDefaultMap(): Record<RoleCode, string[]> {
       'survey:stats',
       'survey:publish'
     ],
-    ROLE3: [
-      'survey:list',
-      'survey:create',
-      'survey:edit',
-      'survey:stats',
-      'survey:publish',
-      'survey:delete',
-      'user:list',
-      'user:edit',
-      'user:delete',
-      'permission:manage'
-    ]
+    ROLE3: [...ROLE3_FIXED_PERMISSIONS]
   }
+}
+
+function normalizeMap(map: Partial<Record<RoleCode, string[]>>) {
+  const defaultMap = getDefaultMap()
+
+  return {
+    ROLE1: Array.from(new Set(map.ROLE1 || defaultMap.ROLE1)),
+    ROLE2: Array.from(new Set(map.ROLE2 || defaultMap.ROLE2)),
+    ROLE3: [...ROLE3_FIXED_PERMISSIONS]
+  } as Record<RoleCode, string[]>
 }
 
 function ensureStorage() {
@@ -42,7 +55,10 @@ function ensureStorage() {
 
 function readMap(): Record<RoleCode, string[]> {
   ensureStorage()
-  return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+  const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') as Partial<
+    Record<RoleCode, string[]>
+  >
+  return normalizeMap(parsed)
 }
 
 function writeMap(map: Record<RoleCode, string[]>) {
@@ -60,9 +76,18 @@ export const usePermissionStore = defineStore('permission', {
     },
 
     setRolePermissions(role: RoleCode, permissions: string[]) {
+      if (role === 'ROLE3') {
+        this.rolePermissionMap = {
+          ...this.rolePermissionMap,
+          ROLE3: [...ROLE3_FIXED_PERMISSIONS]
+        }
+        this.persist()
+        return
+      }
+
       this.rolePermissionMap = {
         ...this.rolePermissionMap,
-        [role]: [...permissions]
+        [role]: Array.from(new Set(permissions))
       }
       this.persist()
     }

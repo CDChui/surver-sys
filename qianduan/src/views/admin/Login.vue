@@ -1,15 +1,35 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore, type UserRole } from '../../stores/auth'
+import { useSettingsStore } from '../../stores/settings'
+import { appendOperationLog } from '../../utils/log'
+import { getPostLoginPath } from '../../utils/auth-redirect'
+import {
+  beginThirdPartyLogin,
+  getDefaultEnabledProvider,
+  shouldAutoThirdPartyForAdmin
+} from '../../utils/oauth-login'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
+const settingsStore = useSettingsStore()
 
 const username = ref('admin')
 const password = ref('123456')
 const role = ref<UserRole>('ROLE3')
 const loading = ref(false)
+const oauthLoading = ref(false)
+
+const canUseThirdPartyLogin = computed(() =>
+  shouldAutoThirdPartyForAdmin(settingsStore.settings)
+)
+
+const defaultProviderName = computed(() => {
+  const provider = getDefaultEnabledProvider(settingsStore.settings)
+  return provider?.name || '第三方认证'
+})
 
 function getMockUserInfo(selectedRole: UserRole) {
   if (selectedRole === 'ROLE1') {
@@ -59,20 +79,38 @@ async function handleLogin() {
 
     const userInfo = getMockUserInfo(role.value)
     authStore.setAuth(userInfo)
+    appendOperationLog({
+      module: 'SYSTEM',
+      action: 'LOGIN',
+      target: `后台登录（${userInfo.role}）`
+    })
 
     alert('登录成功')
-
-    if (userInfo.role === 'ROLE1') {
-      router.push('/m')
-      return
-    }
-
-    router.push('/admin/dashboard')
+    router.push(getPostLoginPath(userInfo.role, route.query.redirect))
   } catch (error) {
     alert('登录失败')
   } finally {
     loading.value = false
   }
+}
+
+function handleThirdPartyLogin() {
+  if (!canUseThirdPartyLogin.value) {
+    alert('当前未启用可用的第三方认证平台')
+    return
+  }
+
+  oauthLoading.value = true
+
+  const result = beginThirdPartyLogin(settingsStore.settings, route.query.redirect)
+
+  if (!result.ok) {
+    oauthLoading.value = false
+    alert(result.message || '第三方认证跳转失败')
+    return
+  }
+
+  window.location.href = result.url
 }
 </script>
 
@@ -131,6 +169,18 @@ async function handleLogin() {
       >
         登录
       </el-button>
+
+      <div style="margin-top: 14px; text-align: center;">
+        <el-button
+          link
+          type="primary"
+          :loading="oauthLoading"
+          :disabled="!canUseThirdPartyLogin || loading"
+          @click="handleThirdPartyLogin"
+        >
+          使用{{ defaultProviderName }}登录
+        </el-button>
+      </div>
     </div>
   </div>
 </template>

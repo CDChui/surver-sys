@@ -1,0 +1,58 @@
+{
+  "groups": [
+    {
+      "name": "app.admin.init",
+      "type": "com.surver.sys.houduan.config.AdminInitProperties",
+      "sourceType": "com.surver.sys.houduan.config.AdminInitProperties"
+    },
+    {
+      "name": "app.jwt",
+      "type": "com.surver.sys.houduan.security.JwtProperties",
+      "sourceType": "com.surver.sys.houduan.security.JwtProperties"
+    },
+    {
+      "name": "app.sso.mock",
+      "type": "com.surver.sys.houduan.config.SsoMockProperties",
+      "sourceType": "com.surver.sys.houduan.config.SsoMockProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "app.admin.init.password",
+      "type": "java.lang.String",
+      "sourceType": "com.surver.sys.houduan.config.AdminInitProperties",
+      "defaultValue": "123456"
+    },
+    {
+      "name": "app.admin.init.username",
+      "type": "java.lang.String",
+      "sourceType": "com.surver.sys.houduan.config.AdminInitProperties",
+      "defaultValue": "admin"
+    },
+    {
+      "name": "app.jwt.issuer",
+      "type": "java.lang.String",
+      "sourceType": "com.surver.sys.houduan.security.JwtProperties",
+      "defaultValue": "survey-system"
+    },
+    {
+      "name": "app.jwt.secret",
+      "type": "java.lang.String",
+      "sourceType": "com.surver.sys.houduan.security.JwtProperties",
+      "defaultValue": "change-this-to-at-least-32-characters-secret"
+    },
+    {
+      "name": "app.jwt.ttl-seconds",
+      "type": "java.lang.Long",
+      "sourceType": "com.surver.sys.houduan.security.JwtProperties",
+      "defaultValue": 7200
+    },
+    {
+      "name": "app.sso.mock.enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.surver.sys.houduan.config.SsoMockProperties",
+      "defaultValue": true
+    }
+  ],
+  "hints": []
+}

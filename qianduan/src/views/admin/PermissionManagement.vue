@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { usePermissionStore, type RoleCode } from '../../stores/permission'
+import { appendOperationLog } from '../../utils/log'
 
 const permissionStore = usePermissionStore()
 
@@ -15,7 +16,8 @@ const permissionGroups = [
       'survey:edit',
       'survey:stats',
       'survey:publish',
-      'survey:delete'
+      'survey:delete',
+      'survey:auth'
     ]
   },
   {
@@ -40,11 +42,27 @@ const permissionGroups = [
   }
 ]
 
+const permissionTextMap: Record<string, string> = {
+  'survey:list': '查看问卷列表',
+  'survey:create': '创建问卷',
+  'survey:edit': '编辑问卷',
+  'survey:stats': '查看统计',
+  'survey:publish': '发布问卷',
+  'survey:delete': '删除问卷',
+  'survey:auth': '问卷授权',
+  'user:list': '查看用户列表',
+  'user:edit': '编辑用户',
+  'user:delete': '删除用户',
+  'permission:manage': '管理权限',
+  'survey:fill': '填写问卷'
+}
+
 function getRolePermissions(role: RoleCode) {
   return [...(permissionStore.rolePermissionMap[role] || [])]
 }
 
 const checkedPermissions = ref<string[]>(getRolePermissions(currentRole.value))
+const isSystemAdminRole = computed(() => currentRole.value === 'ROLE3')
 
 watch(currentRole, (role) => {
   checkedPermissions.value = getRolePermissions(role)
@@ -58,13 +76,34 @@ function getRoleText(role: RoleCode) {
   return '系统管理员'
 }
 
+function getPermissionText(permission: string) {
+  return permissionTextMap[permission] || permission
+}
+
 function handleSave() {
+  if (isSystemAdminRole.value) {
+    checkedPermissions.value = getRolePermissions('ROLE3')
+    alert('系统管理员默认拥有全部权限，且不可修改')
+    return
+  }
+
   permissionStore.setRolePermissions(currentRole.value, [...checkedPermissions.value])
   checkedPermissions.value = getRolePermissions(currentRole.value)
+  appendOperationLog({
+    module: 'PERMISSION',
+    action: 'UPDATE',
+    target: `${getRoleText(currentRole.value)} 权限配置`
+  })
   alert(`已保存 ${getRoleText(currentRole.value)} 的权限配置`)
 }
 
 function handleReset() {
+  if (isSystemAdminRole.value) {
+    checkedPermissions.value = getRolePermissions('ROLE3')
+    alert('系统管理员默认拥有全部权限，且不可修改')
+    return
+  }
+
   checkedPermissions.value = []
   checkedPermissions.value = getRolePermissions(currentRole.value)
   alert(`已重置 ${getRoleText(currentRole.value)} 的权限配置`)
@@ -90,12 +129,16 @@ function handleReset() {
           当前已勾选权限：{{ permissionCount }} 项
         </div>
 
+        <div v-if="isSystemAdminRole" style="color: #e6a23c;">
+          系统管理员默认拥有全部权限，且不可修改
+        </div>
+
         <div style="display: flex; gap: 12px;">
-          <el-button type="primary" @click="handleSave">
+          <el-button type="primary" :disabled="isSystemAdminRole" @click="handleSave">
             保存权限配置
           </el-button>
 
-          <el-button @click="handleReset">
+          <el-button :disabled="isSystemAdminRole" @click="handleReset">
             重置
           </el-button>
         </div>
@@ -125,8 +168,9 @@ function handleReset() {
             v-for="permission in group.permissions"
             :key="permission"
             :value="permission"
+            :disabled="isSystemAdminRole"
           >
-            {{ permission }}
+            {{ getPermissionText(permission) }}
           </el-checkbox>
         </div>
       </el-checkbox-group>

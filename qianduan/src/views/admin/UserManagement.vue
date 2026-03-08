@@ -1,14 +1,20 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import {
+  createUserApi,
   deleteUserApi,
   getUserList,
+  updateUserApi,
   updateUserStatus,
+  type CreateUserParams,
+  type UpdateUserParams,
   type UserItemResult,
   type UserRole,
   type UserStatus
 } from '../../api/user'
 import { useUserStore } from '../../stores/user'
+import { appendOperationLog } from '../../utils/log'
 
 type RoleFilter = 'ALL' | UserRole
 type StatusFilter = 'ALL' | UserStatus
@@ -22,10 +28,27 @@ const roleFilter = ref<RoleFilter>('ALL')
 const statusFilter = ref<StatusFilter>('ALL')
 
 const currentPage = ref(1)
-const pageSize = ref(5)
+const pageSize = ref(20)
 const loading = ref(false)
+const creating = ref(false)
+const editing = ref(false)
+const createDialogVisible = ref(false)
+const editDialogVisible = ref(false)
+const editingUserId = ref<number | null>(null)
+const editUsername = ref('')
 
 const userList = ref<UserRow[]>([])
+const createForm = reactive<CreateUserParams>({
+  username: '',
+  realName: '',
+  role: 'ROLE1',
+  status: 'ENABLED'
+})
+const editForm = reactive<Omit<UpdateUserParams, 'id'>>({
+  realName: '',
+  role: 'ROLE1',
+  status: 'ENABLED'
+})
 
 const filteredUserList = computed(() => {
   const text = keyword.value.trim().toLowerCase()
@@ -109,6 +132,12 @@ async function handleToggleStatus(row: UserRow) {
     userStore.toggleUserStatus(row.id)
     await loadUserList()
 
+    appendOperationLog({
+      module: 'USER',
+      action: 'UPDATE',
+      target: `${row.username}（${nextStatus === 'ENABLED' ? '启用' : '停用'}）`
+    })
+
     alert(`${row.username} 已${nextStatus === 'ENABLED' ? '启用' : '停用'}`)
   } catch (error) {
     alert('更新用户状态失败')
@@ -130,9 +159,128 @@ async function handleDelete(row: UserRow) {
     userStore.deleteUser(row.id)
     await loadUserList()
 
+    appendOperationLog({
+      module: 'USER',
+      action: 'DELETE',
+      target: row.username
+    })
+
     alert(`已删除用户：${row.username}`)
   } catch (error) {
     alert('删除用户失败')
+  }
+}
+
+function handleOpenEdit(row: UserRow) {
+  editingUserId.value = row.id
+  editUsername.value = row.username
+  editForm.realName = row.realName
+  editForm.role = row.role
+  editForm.status = row.status
+  editDialogVisible.value = true
+}
+
+async function handleSaveEdit() {
+  const id = editingUserId.value
+  if (!id) return
+
+  const realName = editForm.realName.trim()
+  if (!realName) {
+    alert('请输入姓名')
+    return
+  }
+
+  try {
+    editing.value = true
+    const response = await updateUserApi({
+      id,
+      realName,
+      role: editForm.role,
+      status: editForm.status
+    })
+
+    if (response.code !== 20000) {
+      alert(response.message || '保存修改失败')
+      return
+    }
+
+    await loadUserList()
+    editDialogVisible.value = false
+
+    appendOperationLog({
+      module: 'USER',
+      action: 'UPDATE',
+      target: editUsername.value
+    })
+
+    alert(`已更新用户：${editUsername.value}`)
+  } catch (error) {
+    const message =
+      error instanceof Error && error.message ? error.message : '保存修改失败'
+    alert(message)
+  } finally {
+    editing.value = false
+  }
+}
+
+function resetCreateForm() {
+  createForm.username = ''
+  createForm.realName = ''
+  createForm.role = 'ROLE1'
+  createForm.status = 'ENABLED'
+}
+
+function handleOpenCreate() {
+  resetCreateForm()
+  createDialogVisible.value = true
+}
+
+async function handleCreateUser() {
+  const username = createForm.username.trim()
+  const realName = createForm.realName.trim()
+
+  if (!username) {
+    alert('请输入用户名')
+    return
+  }
+
+  if (!realName) {
+    alert('请输入姓名')
+    return
+  }
+
+  try {
+    creating.value = true
+
+    const response = await createUserApi({
+      username,
+      realName,
+      role: createForm.role,
+      status: createForm.status
+    })
+
+    if (response.code !== 20000) {
+      alert(response.message || '新建用户失败')
+      return
+    }
+
+    await loadUserList()
+    createDialogVisible.value = false
+    resetCreateForm()
+
+    appendOperationLog({
+      module: 'USER',
+      action: 'CREATE',
+      target: username
+    })
+
+    alert(`已创建用户：${username}`)
+  } catch (error) {
+    const message =
+      error instanceof Error && error.message ? error.message : '新建用户失败'
+    alert(message)
+  } finally {
+    creating.value = false
   }
 }
 
@@ -193,6 +341,10 @@ onMounted(() => {
           重置筛选
         </el-button>
 
+        <el-button type="primary" @click="handleOpenCreate">
+          新建用户
+        </el-button>
+
         <span style="color: #666;">
           当前结果：{{ total }} 条
         </span>
@@ -217,8 +369,12 @@ onMounted(() => {
           </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="180" />
-        <el-table-column label="操作" width="220">
+        <el-table-column label="操作" width="300">
           <template #default="scope">
+            <el-button size="small" @click="handleOpenEdit(scope.row)">
+              编辑
+            </el-button>
+
             <el-button size="small" type="warning" @click="handleToggleStatus(scope.row)">
               {{ scope.row.status === 'ENABLED' ? '停用' : '启用' }}
             </el-button>
@@ -238,17 +394,99 @@ onMounted(() => {
       </div>
 
       <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
-        <el-pagination
-          background
-          layout="total, sizes, prev, pager, next"
-          :total="total"
-          :page-size="pageSize"
-          :current-page="currentPage"
-          :page-sizes="[5, 10, 20]"
-          @current-change="handlePageChange"
-          @size-change="handleSizeChange"
-        />
+        <el-config-provider :locale="zhCn">
+          <el-pagination
+            background
+            layout="total, sizes, prev, pager, next"
+            :total="total"
+            :page-size="pageSize"
+            :current-page="currentPage"
+            :page-sizes="[10, 20, 50, 100]"
+            @current-change="handlePageChange"
+            @size-change="handleSizeChange"
+          />
+        </el-config-provider>
       </div>
     </el-card>
+
+    <el-dialog v-model="createDialogVisible" title="新建用户" width="520px">
+      <div style="display: grid; gap: 14px;">
+        <div>
+          <div style="margin-bottom: 6px; font-weight: 600;">用户名</div>
+          <el-input v-model="createForm.username" placeholder="请输入用户名" />
+        </div>
+
+        <div>
+          <div style="margin-bottom: 6px; font-weight: 600;">姓名</div>
+          <el-input v-model="createForm.realName" placeholder="请输入姓名" />
+        </div>
+
+        <div>
+          <div style="margin-bottom: 6px; font-weight: 600;">角色</div>
+          <el-select v-model="createForm.role" style="width: 100%;">
+            <el-option label="普通用户" value="ROLE1" />
+            <el-option label="业务管理员" value="ROLE2" />
+            <el-option label="系统管理员" value="ROLE3" />
+          </el-select>
+        </div>
+
+        <div>
+          <div style="margin-bottom: 6px; font-weight: 600;">状态</div>
+          <el-select v-model="createForm.status" style="width: 100%;">
+            <el-option label="启用" value="ENABLED" />
+            <el-option label="停用" value="DISABLED" />
+          </el-select>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="createDialogVisible = false">
+          取消
+        </el-button>
+        <el-button type="primary" :loading="creating" @click="handleCreateUser">
+          创建
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="editDialogVisible" title="编辑用户" width="520px">
+      <div style="display: grid; gap: 14px;">
+        <div>
+          <div style="margin-bottom: 6px; font-weight: 600;">用户名</div>
+          <el-input :model-value="editUsername" disabled />
+        </div>
+
+        <div>
+          <div style="margin-bottom: 6px; font-weight: 600;">姓名</div>
+          <el-input v-model="editForm.realName" placeholder="请输入姓名" />
+        </div>
+
+        <div>
+          <div style="margin-bottom: 6px; font-weight: 600;">角色</div>
+          <el-select v-model="editForm.role" style="width: 100%;">
+            <el-option label="普通用户" value="ROLE1" />
+            <el-option label="业务管理员" value="ROLE2" />
+            <el-option label="系统管理员" value="ROLE3" />
+          </el-select>
+        </div>
+
+        <div>
+          <div style="margin-bottom: 6px; font-weight: 600;">状态</div>
+          <el-select v-model="editForm.status" style="width: 100%;">
+            <el-option label="启用" value="ENABLED" />
+            <el-option label="停用" value="DISABLED" />
+          </el-select>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="editDialogVisible = false">
+          取消
+        </el-button>
+        <el-button type="primary" :loading="editing" @click="handleSaveEdit">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>

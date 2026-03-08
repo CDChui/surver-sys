@@ -8,6 +8,7 @@ import {
   type QuestionType
 } from '../../api/survey'
 import { useSurveyStore } from '../../stores/survey'
+import { appendOperationLog } from '../../utils/log'
 
 const router = useRouter()
 const surveyStore = useSurveyStore()
@@ -40,18 +41,26 @@ async function handleSaveDraft() {
   try {
     loading.value = true
 
-    const result = await createSurveyDraft({
+    const response = await createSurveyDraft({
       title: form.title,
       description: form.description,
       questions: form.questions
     })
 
-    surveyStore.addSurvey({
+    const result = response.data
+
+    surveyStore.createSurvey({
       id: result.id,
       title: result.title,
       description: result.description,
-      status: result.status,
-      schema: result.schema
+      schema: result.schema,
+      creatorId: result.creatorId
+    })
+
+    appendOperationLog({
+      module: 'SURVEY',
+      action: 'CREATE',
+      target: result.title
     })
 
     alert(

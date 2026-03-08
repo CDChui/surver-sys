@@ -4,7 +4,13 @@ import { useAuthStore } from '../../stores/auth'
 const authStore = useAuthStore()
 
 function saveToken() {
-  authStore.setToken('demo-token-123')
+  authStore.setAuth({
+    token: 'demo-token-123',
+    role: 'ROLE1',
+    username: 'demo-user',
+    realName: 'Demo User',
+    userId: 1
+  })
   alert('token 已保存到 localStorage')
 }
 

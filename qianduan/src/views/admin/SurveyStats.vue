@@ -8,6 +8,7 @@ import {
   type QuestionSchemaItem,
   type SurveyStatsItem
 } from '../../api/survey'
+import { appendOperationLog } from '../../utils/log'
 
 const route = useRoute()
 const router = useRouter()
@@ -164,6 +165,12 @@ async function handleExport() {
       return
     }
 
+    appendOperationLog({
+      module: 'SURVEY',
+      action: 'UPDATE',
+      target: `${surveyTitle.value || `问卷${surveyId.value}`} 统计导出`
+    })
+
     alert('Excel 导出成功')
   } catch (error) {
     alert('导出失败')
@@ -209,11 +216,11 @@ function handleResize() {
           </div>
 
           <div style="display: flex; gap: 12px;">
-            <el-button :loading="exporting" @click="handleExport">
+            <el-button type="success" :loading="exporting" @click="handleExport">
               导出 Excel
             </el-button>
 
-            <el-button @click="handleBack">
+            <el-button type="primary" @click="handleBack">
               返回问卷列表
             </el-button>
           </div>
