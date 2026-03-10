@@ -7,9 +7,10 @@ import java.util.List;
 import java.util.Map;
 
 public record UpdateSurveyRequest(
-        @NotNull(message = "id 不能为空") Long id,
-        @NotBlank(message = "title 不能为空") String title,
+        @NotNull(message = "id cannot be null") Long id,
+        @NotBlank(message = "title cannot be blank") String title,
         String description,
-        @NotNull(message = "questions 不能为空") List<Map<String, Object>> questions
+        @NotNull(message = "questions cannot be null") List<Map<String, Object>> questions,
+        Boolean allowDuplicateSubmit
 ) {
 }

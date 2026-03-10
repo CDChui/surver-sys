@@ -61,9 +61,10 @@ onMounted(async () => {
       return
     }
 
-    const provider = settingsStore.settings.authIntegration.providers.find(
-      (item) => item.id === statePayload.providerId
-    )
+    const provider =
+      settingsStore.settings.authIntegration.providers.find(
+        (item) => item.id === statePayload.providerId
+      ) || { id: statePayload.providerId, name: statePayload.providerId }
 
     if (!provider) {
       handleError('认证平台配置不存在，请联系管理员。')

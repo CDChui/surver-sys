@@ -1,0 +1,134 @@
+{
+  "nextUserId" : 21,
+  "users" : [ {
+    "id" : 1,
+    "username" : "admin",
+    "realName" : "系统管理员",
+    "role" : "ROLE3",
+    "status" : "ENABLED",
+    "createdAt" : "2026-03-09 00:20:47",
+    "localAccount" : true,
+    "passwordHash" : "$2a$10$Q5Pr2LmEt0LpE4g5en5EnuWo./UHOCc8uF1/FtqcRQR4HaELKjXui",
+    "remark" : ""
+  }, {
+    "id" : 2,
+    "username" : "teacher01",
+    "realName" : "张老师",
+    "role" : "ROLE2",
+    "status" : "ENABLED",
+    "createdAt" : "2026-03-09 00:20:47",
+    "localAccount" : true,
+    "passwordHash" : "$2a$10$zjdKFuGefnyUhtgY.aP8FuAsB5h54VKL.5zzQ4fDS0A.JSQ93E7Ja",
+    "remark" : ""
+  }, {
+    "id" : 4,
+    "username" : "student01",
+    "realName" : "王同学",
+    "role" : "ROLE1",
+    "status" : "ENABLED",
+    "createdAt" : "2026-03-09 00:20:47",
+    "localAccount" : true,
+    "passwordHash" : "$2a$10$WEc9xq/4K3BOP/G/FZr/lOkdDGrSpnMcFYcfC.KRi3U.1zVoEeZdu",
+    "remark" : ""
+  }, {
+    "id" : 11,
+    "username" : "persist_user_002049",
+    "realName" : "???????",
+    "role" : "ROLE2",
+    "status" : "ENABLED",
+    "createdAt" : "2026-03-09 00:20:49",
+    "localAccount" : false,
+    "passwordHash" : "",
+    "remark" : ""
+  }, {
+    "id" : 12,
+    "username" : "persist_user_002204",
+    "realName" : "???????",
+    "role" : "ROLE2",
+    "status" : "ENABLED",
+    "createdAt" : "2026-03-09 00:22:04",
+    "localAccount" : false,
+    "passwordHash" : "",
+    "remark" : ""
+  }, {
+    "id" : 14,
+    "username" : "oauth_user",
+    "realName" : "第三方用户",
+    "role" : "ROLE1",
+    "status" : "ENABLED",
+    "createdAt" : "2026-03-09 11:31:20",
+    "localAccount" : false,
+    "passwordHash" : "",
+    "remark" : ""
+  }, {
+    "id" : 15,
+    "username" : "local_113333",
+    "realName" : "??????",
+    "role" : "ROLE1",
+    "status" : "ENABLED",
+    "createdAt" : "2026-03-09 11:33:33",
+    "localAccount" : true,
+    "passwordHash" : "$2a$10$xDDYb0UT5Xh3j.ksS/wjfuVeSKQ0MTpPZezsUCSDyLP6H0S7awBxu",
+    "remark" : ""
+  }, {
+    "id" : 16,
+    "username" : "oauth_admin",
+    "realName" : "第三方管理员",
+    "role" : "ROLE3",
+    "status" : "ENABLED",
+    "createdAt" : "2026-03-09 11:48:30",
+    "localAccount" : false,
+    "passwordHash" : "",
+    "remark" : ""
+  }, {
+    "id" : 17,
+    "username" : "user01",
+    "realName" : "测试",
+    "role" : "ROLE1",
+    "status" : "ENABLED",
+    "createdAt" : "2026-03-09 12:05:21",
+    "localAccount" : true,
+    "passwordHash" : "$2a$10$.Zb2lRRl.QhAqdYwC32vVuyX3GBlEjbpor8CUv0LNbSqt.36QsU5i",
+    "remark" : "测试用户"
+  }, {
+    "id" : 18,
+    "username" : "remark_120601",
+    "realName" : "?????",
+    "role" : "ROLE1",
+    "status" : "ENABLED",
+    "createdAt" : "2026-03-09 12:06:01",
+    "localAccount" : true,
+    "passwordHash" : "$2a$10$TvvNK4gAYo3AilQspCu3geldv0PParAdRp0BJnIMdvTIKc42De2yW",
+    "remark" : "??????"
+  }, {
+    "id" : 19,
+    "username" : "user02",
+    "realName" : "测试2",
+    "role" : "ROLE1",
+    "status" : "ENABLED",
+    "createdAt" : "2026-03-09 21:35:59",
+    "localAccount" : true,
+    "passwordHash" : "$2a$10$PZQABqLHM05D8JslZl/Yh.SEsTm8oHjLx2q9FY8Cj7UnGgwDXTdPi",
+    "remark" : "测试"
+  }, {
+    "id" : 20,
+    "username" : "user03",
+    "realName" : "测试",
+    "role" : "ROLE1",
+    "status" : "ENABLED",
+    "createdAt" : "2026-03-09 23:45:25",
+    "localAccount" : true,
+    "passwordHash" : "$2a$10$DXIJ7MpJ5E8EIIaugzx2YO12IfGnutpQoW0fWhHl.jctBIrLoy5FW",
+    "remark" : "测试"
+  }, {
+    "id" : 21,
+    "username" : "persist_user_20260310002008",
+    "realName" : "???????",
+    "role" : "ROLE1",
+    "status" : "ENABLED",
+    "createdAt" : "2026-03-10 00:20:09",
+    "localAccount" : true,
+    "passwordHash" : "$2a$10$Yk.RQLxOY9WNlZi0lqKY9e6UF6BQbYblVpPAptnqtzrfnfWXrdq7q",
+    "remark" : "restart-check"
+  } ]
+}

@@ -1,21 +1,19 @@
-import request from './request'
+﻿import request from './request'
 import { USE_REAL_API } from '../config/env'
 import type { UserRole } from '../stores/auth'
-
-// 后面接真实后端时，就在这里改
-// 现在先用 Promise 模拟接口返回
 
 export interface LocalLoginParams {
   username: string
   password: string
 }
 
-export interface LocalLoginResult {
+export interface LoginResult {
   token: string
-  user: {
-    username: string
-    role: string
-  }
+  role: UserRole
+  username: string
+  realName: string
+  userId: number
+  localAccount: boolean
 }
 
 export interface OauthCallbackParams {
@@ -25,36 +23,67 @@ export interface OauthCallbackParams {
   redirectPath: string
 }
 
-export interface OauthLoginResult {
-  token: string
-  role: UserRole
-  username: string
-  realName: string
-  userId: number
-}
+export type OauthLoginResult = LoginResult
 
-interface ApiResponse<T> {
+export interface ApiResponse<T> {
   code: number
   message: string
   data: T
 }
 
-export function localLogin(params: LocalLoginParams): Promise<LocalLoginResult> {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      if (params.username === 'admin' && params.password === '123456') {
-        resolve({
-          token: 'admin-token-123456',
-          user: {
-            username: 'admin',
-            role: 'ROLE3'
-          }
-        })
-      } else {
-        reject(new Error('用户名或密码错误'))
-      }
-    }, 500)
-  })
+function buildMockLocalUser(username: string, password: string): LoginResult {
+  if (password !== '123456') {
+    throw new Error('用户名或密码错误')
+  }
+
+  if (username === 'admin') {
+    return {
+      token: 'mock-token-role3',
+      role: 'ROLE3',
+      username: 'admin',
+      realName: '系统管理员',
+      userId: 1,
+      localAccount: true
+    }
+  }
+
+  if (username === 'teacher01') {
+    return {
+      token: 'mock-token-role2',
+      role: 'ROLE2',
+      username: 'teacher01',
+      realName: '张老师',
+      userId: 2,
+      localAccount: true
+    }
+  }
+
+  if (username === 'student01') {
+    return {
+      token: 'mock-token-role1',
+      role: 'ROLE1',
+      username: 'student01',
+      realName: '王同学',
+      userId: 4,
+      localAccount: true
+    }
+  }
+
+  throw new Error('用户名或密码错误')
+}
+
+export async function localLogin(
+  params: LocalLoginParams
+): Promise<ApiResponse<LoginResult>> {
+  if (USE_REAL_API) {
+    return request.post('/auth/local/login', params)
+  }
+
+  return {
+    code: 20000,
+    message: 'success',
+    data: buildMockLocalUser(params.username.trim(), params.password)
+  }
 }
 
 function buildMockOauthUser(redirectPath: string): OauthLoginResult {
@@ -64,7 +93,8 @@ function buildMockOauthUser(redirectPath: string): OauthLoginResult {
       role: 'ROLE3',
       username: 'oauth_admin',
       realName: '第三方管理员',
-      userId: 1
+      userId: 1,
+      localAccount: false
     }
   }
 
@@ -73,7 +103,8 @@ function buildMockOauthUser(redirectPath: string): OauthLoginResult {
     role: 'ROLE1',
     username: 'oauth_user',
     realName: '第三方用户',
-    userId: 4
+    userId: 4,
+    localAccount: false
   }
 }
 
@@ -88,5 +119,17 @@ export async function oauthCallbackLogin(
     code: 20000,
     message: 'success',
     data: buildMockOauthUser(params.redirectPath)
+  }
+}
+
+export async function logoutApi(): Promise<ApiResponse<null>> {
+  if (USE_REAL_API) {
+    return request.post('/auth/logout')
+  }
+
+  return {
+    code: 20000,
+    message: 'success',
+    data: null
   }
 }

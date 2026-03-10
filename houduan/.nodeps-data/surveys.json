@@ -1,0 +1,581 @@
+{
+  "nextSurveyId" : 1020,
+  "surveys" : [ {
+    "id" : 1001,
+    "title" : "persist-check-20260308233248",
+    "description" : "",
+    "status" : "DELETED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-08 23:32:48",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1002,
+    "title" : "verify-persist-20260308234332",
+    "description" : "",
+    "status" : "DELETED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-08 23:43:32",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1003,
+    "title" : "测试",
+    "description" : "test",
+    "status" : "PUBLISHED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-08 23:56:38",
+    "allowDuplicateSubmit" : true,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "id" : 1772985390341,
+      "type" : "single",
+      "title" : "请填写单选题标题",
+      "required" : true,
+      "options" : [ {
+        "id" : 1772985389758,
+        "label" : "选项1"
+      }, {
+        "id" : 1772985389759,
+        "label" : "选项2"
+      } ]
+    }, {
+      "id" : 1772985390167,
+      "type" : "multi",
+      "title" : "请填写多选题标题",
+      "required" : false,
+      "options" : [ {
+        "id" : 1772985390138,
+        "label" : "选项1"
+      }, {
+        "id" : 1772985390139,
+        "label" : "选项2"
+      } ]
+    }, {
+      "id" : 1772985390854,
+      "type" : "text",
+      "title" : "请填写填空题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1772985391085,
+      "type" : "textarea",
+      "title" : "请填写简答题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1772985392165,
+      "type" : "rate",
+      "title" : "请填写评分题标题",
+      "required" : false,
+      "options" : [ ]
+    } ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1004,
+    "title" : "测试2",
+    "description" : "test02",
+    "status" : "PUBLISHED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-09 00:01:38",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "id" : 1772985695053,
+      "type" : "single",
+      "title" : "请填写单选题标题",
+      "required" : false,
+      "options" : [ {
+        "id" : 1772985694608,
+        "label" : "选项1"
+      }, {
+        "id" : 1772985694609,
+        "label" : "选项2"
+      } ]
+    } ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1005,
+    "title" : "persist-proof-20260309000449",
+    "description" : "??????",
+    "status" : "DRAFT",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-09 00:04:49",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1006,
+    "title" : "测试3",
+    "description" : "测试3来十里蓝山",
+    "status" : "PUBLISHED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-09 00:27:05",
+    "allowDuplicateSubmit" : true,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "id" : 1772987224479,
+      "type" : "single",
+      "title" : "请填写单选题标题",
+      "required" : false,
+      "options" : [ {
+        "id" : 1772987223793,
+        "label" : "选项1"
+      }, {
+        "id" : 1772987223794,
+        "label" : "选项2"
+      } ]
+    } ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1007,
+    "title" : "nodeps-survey",
+    "description" : "integration-test",
+    "status" : "DRAFT",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-09 11:31:20",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "id" : "q1",
+      "type" : "single",
+      "title" : "Q1",
+      "required" : true,
+      "options" : [ {
+        "label" : "A"
+      }, {
+        "label" : "B"
+      } ]
+    } ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1008,
+    "title" : "测试（副本）",
+    "description" : "test",
+    "status" : "PUBLISHED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-09 13:00:36",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "id" : 1772985390341,
+      "type" : "single",
+      "title" : "请填写单选题标题",
+      "required" : true,
+      "options" : [ {
+        "id" : 1772985389758,
+        "label" : "选项1"
+      }, {
+        "id" : 1772985389759,
+        "label" : "选项2"
+      } ]
+    }, {
+      "id" : 1772985390167,
+      "type" : "multi",
+      "title" : "请填写多选题标题",
+      "required" : false,
+      "options" : [ {
+        "id" : 1772985390138,
+        "label" : "选项1"
+      }, {
+        "id" : 1772985390139,
+        "label" : "选项2"
+      } ]
+    }, {
+      "id" : 1772985390854,
+      "type" : "text",
+      "title" : "请填写填空题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1772985391085,
+      "type" : "textarea",
+      "title" : "请填写简答题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1772985392165,
+      "type" : "rate",
+      "title" : "请填写评分题标题",
+      "required" : false,
+      "options" : [ ]
+    } ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1009,
+    "title" : "my-submission-check",
+    "description" : "desc",
+    "status" : "DELETED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-09 13:03:46",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "title" : "q1",
+      "options" : [ {
+        "id" : 1,
+        "label" : "A"
+      }, {
+        "id" : 2,
+        "label" : "B"
+      } ],
+      "id" : 1,
+      "type" : "single",
+      "required" : true
+    } ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1010,
+    "title" : "my-submission-check2",
+    "description" : "desc",
+    "status" : "PUBLISHED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-09 13:04:06",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "title" : "q1",
+      "options" : [ {
+        "id" : 1,
+        "label" : "A"
+      }, {
+        "id" : 2,
+        "label" : "B"
+      } ],
+      "id" : 1,
+      "type" : "single",
+      "required" : true
+    } ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1011,
+    "title" : "record-check",
+    "description" : "desc",
+    "status" : "PUBLISHED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-09 14:33:20",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "title" : "q1",
+      "options" : [ {
+        "id" : 1,
+        "label" : "A"
+      }, {
+        "id" : 2,
+        "label" : "B"
+      } ],
+      "id" : 1,
+      "type" : "single",
+      "required" : true
+    } ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1012,
+    "title" : "测试（副本）",
+    "description" : "test",
+    "status" : "PUBLISHED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-09 14:56:26",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "id" : 1772985390341,
+      "type" : "single",
+      "title" : "请填写单选题标题",
+      "required" : true,
+      "options" : [ {
+        "id" : 1772985389758,
+        "label" : "选项1"
+      }, {
+        "id" : 1772985389759,
+        "label" : "选项2"
+      } ]
+    }, {
+      "id" : 1772985390167,
+      "type" : "multi",
+      "title" : "请填写多选题标题",
+      "required" : false,
+      "options" : [ {
+        "id" : 1772985390138,
+        "label" : "选项1"
+      }, {
+        "id" : 1772985390139,
+        "label" : "选项2"
+      } ]
+    }, {
+      "id" : 1772985390854,
+      "type" : "text",
+      "title" : "请填写填空题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1772985391085,
+      "type" : "textarea",
+      "title" : "请填写简答题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1772985392165,
+      "type" : "rate",
+      "title" : "请填写评分题标题",
+      "required" : false,
+      "options" : [ ]
+    } ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1013,
+    "title" : "allow-test-true",
+    "description" : "d2",
+    "status" : "PUBLISHED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-09 23:29:11",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "id" : 1,
+      "type" : "text",
+      "title" : "q1",
+      "required" : true,
+      "options" : [ ]
+    } ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1014,
+    "title" : "allow-test-false",
+    "description" : "d",
+    "status" : "DRAFT",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-09 23:29:11",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "id" : 1,
+      "type" : "text",
+      "title" : "q1",
+      "required" : true,
+      "options" : [ ]
+    } ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1015,
+    "title" : "allow-test-true-new",
+    "description" : "d",
+    "status" : "PUBLISHED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-09 23:31:45",
+    "allowDuplicateSubmit" : true,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "id" : 1,
+      "type" : "text",
+      "title" : "q1",
+      "required" : true,
+      "options" : [ ]
+    } ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1016,
+    "title" : "重启测试",
+    "description" : "测试",
+    "status" : "DRAFT",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-09 23:44:48",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "id" : 1773071065280,
+      "type" : "single",
+      "title" : "请填写单选题标题",
+      "required" : true,
+      "options" : [ {
+        "id" : 1773071064362,
+        "label" : "选项1"
+      }, {
+        "id" : 1773071064363,
+        "label" : "选项2"
+      }, {
+        "id" : 1773071068046,
+        "label" : "选项3"
+      }, {
+        "id" : 1773071068623,
+        "label" : "选项4"
+      } ]
+    }, {
+      "id" : 1773071065958,
+      "type" : "multi",
+      "title" : "请填写多选题标题",
+      "required" : false,
+      "options" : [ {
+        "id" : 1773071065300,
+        "label" : "选项1"
+      }, {
+        "id" : 1773071065301,
+        "label" : "选项2"
+      }, {
+        "id" : 1773071070539,
+        "label" : "选项3"
+      }, {
+        "id" : 1773071070630,
+        "label" : "选项4"
+      } ]
+    }, {
+      "id" : 1773071074347,
+      "type" : "textarea",
+      "title" : "请填写简答题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1773071081148,
+      "type" : "rate",
+      "title" : "请填写评分题标题",
+      "required" : false,
+      "options" : [ ]
+    } ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1017,
+    "title" : "persist-answer-235842",
+    "description" : "p",
+    "status" : "PUBLISHED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-09 23:58:42",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "title" : "q1",
+      "options" : [ ],
+      "id" : 1,
+      "type" : "text",
+      "required" : true
+    } ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1018,
+    "title" : "persist-answer-235902",
+    "description" : "p",
+    "status" : "PUBLISHED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-09 23:59:02",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "title" : "q1",
+      "options" : [ ],
+      "id" : 1,
+      "type" : "text",
+      "required" : true
+    } ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1019,
+    "title" : "PersistCheck-20260310000534",
+    "description" : "restart persistence verification",
+    "status" : "PUBLISHED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-10 00:05:34",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "id" : "q1",
+      "title" : "??1",
+      "type" : "text",
+      "required" : true
+    } ],
+    "authUsers" : [ ]
+  }, {
+    "id" : 1020,
+    "title" : "PersistCheck-20260310001702",
+    "description" : "restart persistence verification",
+    "status" : "PUBLISHED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-10 00:17:02",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "id" : "q1",
+      "title" : "??1",
+      "type" : "text",
+      "required" : true
+    } ],
+    "authUsers" : [ ]
+  } ],
+  "answers" : [ {
+    "surveyId" : 1018,
+    "userId" : 19,
+    "username" : "user02",
+    "realName" : "测试2",
+    "surveyTitleSnapshot" : "persist-answer-235902",
+    "surveyDescriptionSnapshot" : "p",
+    "surveySchemaSnapshot" : [ {
+      "title" : "q1",
+      "options" : [ ],
+      "id" : 1,
+      "type" : "text",
+      "required" : true
+    } ],
+    "answers" : {
+      "1" : "ok"
+    },
+    "submitTime" : "2026-03-09 23:59:03"
+  }, {
+    "surveyId" : 1019,
+    "userId" : 4,
+    "username" : "student01",
+    "realName" : "王同学",
+    "surveyTitleSnapshot" : "PersistCheck-20260310000534",
+    "surveyDescriptionSnapshot" : "restart persistence verification",
+    "surveySchemaSnapshot" : [ {
+      "id" : "q1",
+      "title" : "??1",
+      "type" : "text",
+      "required" : true
+    } ],
+    "answers" : {
+      "q1" : "answer-20260310000534"
+    },
+    "submitTime" : "2026-03-10 00:05:34"
+  }, {
+    "surveyId" : 1020,
+    "userId" : 4,
+    "username" : "student01",
+    "realName" : "王同学",
+    "surveyTitleSnapshot" : "PersistCheck-20260310001702",
+    "surveyDescriptionSnapshot" : "restart persistence verification",
+    "surveySchemaSnapshot" : [ {
+      "id" : "q1",
+      "title" : "??1",
+      "type" : "text",
+      "required" : true
+    } ],
+    "answers" : {
+      "q1" : "answer-20260310001702"
+    },
+    "submitTime" : "2026-03-10 00:17:02"
+  } ]
+}

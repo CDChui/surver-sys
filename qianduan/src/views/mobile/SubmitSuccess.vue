@@ -13,12 +13,32 @@ const surveyId = computed(() => {
   return String(route.query.id || '1')
 })
 
+const isPreviewMode = computed(() => {
+  const raw = String(route.query.previewMode || '').trim().toLowerCase()
+  return raw === '1' || raw === 'true' || raw === 'yes'
+})
+
 function goHome() {
   router.push('/m')
 }
 
-function fillAgain() {
-  router.push(`/m/surveys/${surveyId.value}`)
+function viewMyAnswer() {
+  if (isPreviewMode.value) {
+    router.push({
+      path: `/m/surveys/${surveyId.value}`,
+      query: {
+        previewMode: '1'
+      }
+    })
+    return
+  }
+
+  router.push({
+    path: '/m/review',
+    query: {
+      id: surveyId.value
+    }
+  })
 }
 </script>
 
@@ -52,11 +72,11 @@ function fillAgain() {
 
       <div style="display: flex; flex-direction: column; gap: 12px;">
         <van-button type="primary" block @click="goHome">
-          返回首页
+          返回个人首页
         </van-button>
 
-        <van-button plain block @click="fillAgain">
-          再次查看问卷
+        <van-button plain block @click="viewMyAnswer">
+          查看我的答案
         </van-button>
       </div>
     </div>

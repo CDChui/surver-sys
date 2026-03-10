@@ -1,6 +1,7 @@
 package com.surver.sys.houduan.module.survey.service;
 
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -8,6 +9,7 @@ import java.util.UUID;
 import java.util.function.LongSupplier;
 
 @Service
+@Profile("!nodeps")
 public class SurveyRedisService {
 
     private static final String ENTRY_PREFIX = "survey:entry:";

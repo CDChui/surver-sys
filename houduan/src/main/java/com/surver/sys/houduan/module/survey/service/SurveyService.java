@@ -4,8 +4,10 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.surver.sys.houduan.common.ErrorCode;
 import com.surver.sys.houduan.exception.BizException;
-import com.surver.sys.houduan.module.log.service.LogService;
+import com.surver.sys.houduan.module.log.service.LogServiceApi;
 import com.surver.sys.houduan.module.survey.dto.CreateSurveyRequest;
+import com.surver.sys.houduan.module.survey.dto.MySurveySubmissionDetailResponse;
+import com.surver.sys.houduan.module.survey.dto.MySurveySubmissionItemResponse;
 import com.surver.sys.houduan.module.survey.dto.PublicSurveyResponse;
 import com.surver.sys.houduan.module.survey.dto.SubmitSurveyRequest;
 import com.surver.sys.houduan.module.survey.dto.SubmitSurveyResponse;
@@ -22,6 +24,7 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -43,22 +46,22 @@ import java.util.Objects;
 import java.util.Set;
 
 @Service
-public class SurveyService {
+@Profile("!nodeps")
+public class SurveyService implements SurveyServiceApi {
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final long SETTINGS_ID = 1L;
     private static final Duration ENTRY_TOKEN_TTL = Duration.ofMinutes(30);
     private static final Duration SUBMIT_LOCK_TTL = Duration.ofSeconds(10);
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final SurveyRedisService surveyRedisService;
-    private final LogService logService;
+    private final LogServiceApi logService;
 
     public SurveyService(JdbcTemplate jdbcTemplate,
                          ObjectMapper objectMapper,
                          SurveyRedisService surveyRedisService,
-                         LogService logService) {
+                         LogServiceApi logService) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.surveyRedisService = surveyRedisService;
@@ -66,22 +69,31 @@ public class SurveyService {
     }
 
     public SurveyDetailResponse createSurvey(UserPrincipal principal, CreateSurveyRequest request) {
+        String normalizedTitle = SurveyTitleCodec.normalizeInputTitle(request.title());
+        if (SurveyTitleCodec.isLikelyBrokenTitle(normalizedTitle)) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "Invalid survey title encoding");
+        }
         String schemaJson = writeJson(cloneSchema(request.questions()));
         KeyHolder keyHolder = new GeneratedKeyHolder();
+        boolean allowDuplicateSubmit = boolFlag(request.allowDuplicateSubmit());
         jdbcTemplate.update(connection -> {
             var ps = connection.prepareStatement("""
-                    INSERT INTO survey_info (title, description, status, creator_user_id, schema_data, quota_enabled, quota_total)
-                    VALUES (?, ?, 'DRAFT', ?, CAST(? AS JSON), 0, NULL)
+                    INSERT INTO survey_info (
+                        title, description, status, creator_user_id,
+                        schema_data, allow_duplicate_submit, quota_enabled, quota_total
+                    )
+                    VALUES (?, ?, 'DRAFT', ?, CAST(? AS JSON), ?, 0, NULL)
                     """, new String[]{"id"});
-            ps.setString(1, request.title().trim());
+            ps.setString(1, normalizedTitle);
             ps.setString(2, request.description() == null ? "" : request.description().trim());
             ps.setLong(3, principal.userId());
             ps.setString(4, schemaJson);
+            ps.setInt(5, allowDuplicateSubmit ? 1 : 0);
             return ps;
         }, keyHolder);
         Number key = keyHolder.getKey();
         if (key == null) {
-            throw new BizException(ErrorCode.SERVER_ERROR, "创建问卷失败");
+            throw new BizException(ErrorCode.SERVER_ERROR, "鍒涘缓闂嵎澶辫触");
         }
         SurveyDetailResponse created = toDetail(getSurvey(key.longValue()));
         logService.appendSystemLog(principal.username(), "SURVEY", "CREATE", created.title());
@@ -90,7 +102,7 @@ public class SurveyService {
 
     public List<SurveyListItemResponse> listSurveys(UserPrincipal principal) {
         if ("ROLE1".equals(principal.role())) {
-            throw new BizException(ErrorCode.FORBIDDEN, "普通用户无权访问后台问卷列表");
+            throw new BizException(ErrorCode.FORBIDDEN, "forbidden");
         }
         if ("ROLE3".equals(principal.role())) {
             return jdbcTemplate.query("""
@@ -100,7 +112,7 @@ public class SurveyService {
                     ORDER BY id ASC
                     """, (rs, rowNum) -> new SurveyListItemResponse(
                     rs.getLong("id"),
-                    rs.getString("title"),
+                    SurveyTitleCodec.repairLegacyTitle(rs.getString("title"), rs.getLong("id")),
                     rs.getString("status"),
                     rs.getTimestamp("created_at").toLocalDateTime().format(DATE_TIME_FORMATTER),
                     rs.getLong("creator_user_id")
@@ -115,7 +127,7 @@ public class SurveyService {
                 ORDER BY s.id ASC
                 """, (rs, rowNum) -> new SurveyListItemResponse(
                 rs.getLong("id"),
-                rs.getString("title"),
+                SurveyTitleCodec.repairLegacyTitle(rs.getString("title"), rs.getLong("id")),
                 rs.getString("status"),
                 rs.getTimestamp("created_at").toLocalDateTime().format(DATE_TIME_FORMATTER),
                 rs.getLong("creator_user_id")
@@ -125,7 +137,7 @@ public class SurveyService {
     public SurveyDetailResponse getSurveyDetail(UserPrincipal principal, Long id) {
         SurveyModel model = getSurvey(id);
         if (!canAccessSurvey(principal, model.getId(), model.getCreatorId())) {
-            throw new BizException(ErrorCode.FORBIDDEN, "无权限访问该问卷");
+            throw new BizException(ErrorCode.FORBIDDEN, "鏃犳潈闄愯闂闂嵎");
         }
         return toDetail(model);
     }
@@ -133,14 +145,19 @@ public class SurveyService {
     public SurveyDetailResponse updateSurvey(UserPrincipal principal, Long id, UpdateSurveyRequest request) {
         SurveyModel model = getSurvey(id);
         ensureCanManageSurvey(principal, model.getId(), model.getCreatorId());
+        String normalizedTitle = SurveyTitleCodec.normalizeInputTitle(request.title());
+        if (SurveyTitleCodec.isLikelyBrokenTitle(normalizedTitle)) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "Invalid survey title encoding");
+        }
         jdbcTemplate.update("""
                 UPDATE survey_info
-                SET title = ?, description = ?, schema_data = CAST(? AS JSON)
+                SET title = ?, description = ?, schema_data = CAST(? AS JSON), allow_duplicate_submit = ?
                 WHERE id = ?
                 """,
-                request.title().trim(),
+                normalizedTitle,
                 request.description() == null ? "" : request.description().trim(),
                 writeJson(cloneSchema(request.questions())),
+                boolFlag(request.allowDuplicateSubmit()) ? 1 : 0,
                 id
         );
         SurveyDetailResponse updated = toDetail(getSurvey(id));
@@ -172,24 +189,22 @@ public class SurveyService {
         logService.appendSystemLog(principal.username(), "SURVEY", "DELETE", model.getTitle());
     }
 
-    public PublicSurveyResponse getPublicSurvey(UserPrincipal principal, Long id) {
+    public PublicSurveyResponse getPublicSurvey(UserPrincipal principal, Long id, boolean previewMode) {
         SurveyModel model = getSurvey(id);
-        if ("DELETED".equals(model.getStatus())) {
-            throw new BizException(ErrorCode.NOT_FOUND, "问卷不存在或不可访问");
-        }
+        ensureSurveyReadableByPrincipal(principal, model);
 
-        boolean allowDuplicateSubmit = isAllowDuplicateSubmit();
+        boolean allowDuplicateSubmit = model.isAllowDuplicateSubmit();
         boolean submitted = hasSubmitted(id, principal.userId());
-        if (!allowDuplicateSubmit && submitted) {
-            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "你已经提交过该问卷");
+        if (!previewMode && !allowDuplicateSubmit && submitted) {
+            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "duplicate submit");
         }
 
         String entryToken = null;
-        if (hasQuota(model)) {
+        if (!previewMode && hasQuota(model)) {
             long quotaCount = surveyRedisService.getOrInitQuotaCount(id, () -> countAnswers(id));
             boolean hasTicket = surveyRedisService.hasEntryToken(id, principal.userId());
             if (quotaCount >= model.getQuotaTotal() && !hasTicket && !submitted) {
-                throw new BizException(ErrorCode.QUOTA_FULL, "当前问卷名额已满");
+                throw new BizException(ErrorCode.QUOTA_FULL, "褰撳墠闂嵎鍚嶉宸叉弧");
             }
             entryToken = surveyRedisService.issueEntryToken(id, principal.userId(), ENTRY_TOKEN_TTL);
         }
@@ -205,66 +220,81 @@ public class SurveyService {
 
     public SubmitSurveyResponse submitSurvey(UserPrincipal principal, Long id, SubmitSurveyRequest request) {
         if (!Objects.equals(id, request.surveyId())) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "问卷参数不一致");
+            throw new BizException(ErrorCode.INVALID_PARAM, "surveyId mismatch");
         }
         SurveyModel model = getSurvey(id);
-        if ("DELETED".equals(model.getStatus())) {
-            throw new BizException(ErrorCode.NOT_FOUND, "问卷不存在或不可访问");
-        }
+        ensureSurveyReadableByPrincipal(principal, model);
+        boolean previewMode = boolFlag(request.previewMode());
 
-        boolean allowDuplicateSubmit = isAllowDuplicateSubmit();
+        boolean allowDuplicateSubmit = model.isAllowDuplicateSubmit();
         boolean submittedBefore = hasSubmitted(id, principal.userId());
-        if (!allowDuplicateSubmit && submittedBefore) {
-            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "你已经提交过该问卷");
+        if (!previewMode && !allowDuplicateSubmit && submittedBefore) {
+            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "duplicate submit");
         }
 
         boolean locked = surveyRedisService.tryAcquireSubmitLock(id, principal.userId(), SUBMIT_LOCK_TTL);
         if (!locked) {
-            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "提交过于频繁，请稍后重试");
+            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "鎻愪氦杩囦簬棰戠箒锛岃绋嶅悗閲嶈瘯");
         }
 
         try {
-            if (hasQuota(model) && !submittedBefore) {
+            if (!previewMode && hasQuota(model) && !submittedBefore) {
                 String storedToken = surveyRedisService.getEntryToken(id, principal.userId());
                 if (storedToken == null || storedToken.isBlank()) {
-                    throw new BizException(ErrorCode.QUOTA_FULL, "入场凭证已失效或名额已满");
+                    throw new BizException(ErrorCode.QUOTA_FULL, "鍏ュ満鍑瘉宸插け鏁堟垨鍚嶉宸叉弧");
                 }
                 String requestToken = request.entryToken();
                 if (requestToken != null && !requestToken.isBlank() && !Objects.equals(requestToken, storedToken)) {
-                    throw new BizException(ErrorCode.INVALID_PARAM, "entryToken 无效");
+                    throw new BizException(ErrorCode.INVALID_PARAM, "entryToken 鏃犳晥");
                 }
                 long quotaCount = surveyRedisService.getOrInitQuotaCount(id, () -> countAnswers(id));
                 if (quotaCount >= model.getQuotaTotal()) {
-                    throw new BizException(ErrorCode.QUOTA_FULL, "当前问卷名额已满");
+                    throw new BizException(ErrorCode.QUOTA_FULL, "褰撳墠闂嵎鍚嶉宸叉弧");
                 }
             }
 
+            if (previewMode) {
+                logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE", "preview submit surveyId=" + id);
+                return new SubmitSurveyResponse(id, nowText());
+            }
+
             String answerJson = writeJson(request.answers());
+            String schemaSnapshotJson = writeJson(cloneSchema(model.getSchema()));
+            String titleSnapshot = model.getTitle();
+            String descriptionSnapshot = model.getDescription();
             boolean inserted = false;
 
             if (allowDuplicateSubmit) {
                 if (submittedBefore) {
                     jdbcTemplate.update("""
                             UPDATE survey_answer
-                            SET answer_data = CAST(? AS JSON), submit_time = NOW()
+                            SET answer_data = CAST(? AS JSON),
+                                survey_title_snapshot = ?,
+                                survey_description_snapshot = ?,
+                                survey_schema_snapshot = CAST(? AS JSON),
+                                submit_time = NOW()
                             WHERE survey_id = ? AND user_id = ?
-                            """, answerJson, id, principal.userId());
+                            """, answerJson, titleSnapshot, descriptionSnapshot, schemaSnapshotJson, id, principal.userId());
                 } else {
                     jdbcTemplate.update("""
-                            INSERT INTO survey_answer (survey_id, user_id, answer_data, ip, user_agent)
-                            VALUES (?, ?, CAST(? AS JSON), NULL, NULL)
-                            """, id, principal.userId(), answerJson);
+                            INSERT INTO survey_answer (
+                                survey_id, user_id, answer_data, survey_title_snapshot, survey_description_snapshot, survey_schema_snapshot, ip, user_agent
+                            )
+                            VALUES (?, ?, CAST(? AS JSON), ?, ?, CAST(? AS JSON), NULL, NULL)
+                            """, id, principal.userId(), answerJson, titleSnapshot, descriptionSnapshot, schemaSnapshotJson);
                     inserted = true;
                 }
             } else {
                 try {
                     jdbcTemplate.update("""
-                            INSERT INTO survey_answer (survey_id, user_id, answer_data, ip, user_agent)
-                            VALUES (?, ?, CAST(? AS JSON), NULL, NULL)
-                            """, id, principal.userId(), answerJson);
+                            INSERT INTO survey_answer (
+                                survey_id, user_id, answer_data, survey_title_snapshot, survey_description_snapshot, survey_schema_snapshot, ip, user_agent
+                            )
+                            VALUES (?, ?, CAST(? AS JSON), ?, ?, CAST(? AS JSON), NULL, NULL)
+                            """, id, principal.userId(), answerJson, titleSnapshot, descriptionSnapshot, schemaSnapshotJson);
                     inserted = true;
                 } catch (DataIntegrityViolationException e) {
-                    throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "你已经提交过该问卷");
+                    throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "duplicate submit");
                 }
             }
 
@@ -273,10 +303,44 @@ public class SurveyService {
                 surveyRedisService.clearEntryToken(id, principal.userId());
             }
 
-            logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE", "提交答卷 surveyId=" + id);
+            logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE", "鎻愪氦绛斿嵎 surveyId=" + id);
             return new SubmitSurveyResponse(id, nowText());
         } finally {
             surveyRedisService.releaseSubmitLock(id, principal.userId());
+        }
+    }
+
+    @Override
+    public List<MySurveySubmissionItemResponse> listMySubmissions(UserPrincipal principal) {
+        return jdbcTemplate.query("""
+                SELECT survey_id, survey_title_snapshot, submit_time
+                FROM survey_answer
+                WHERE user_id = ?
+                ORDER BY submit_time DESC
+                """, (rs, rowNum) -> new MySurveySubmissionItemResponse(
+                rs.getLong("survey_id"),
+                SurveyTitleCodec.repairLegacyTitle(rs.getString("survey_title_snapshot"), rs.getLong("survey_id")),
+                rs.getTimestamp("submit_time").toLocalDateTime().format(DATE_TIME_FORMATTER)
+        ), principal.userId());
+    }
+
+    @Override
+    public MySurveySubmissionDetailResponse getMySubmissionDetail(UserPrincipal principal, Long id) {
+        try {
+            return jdbcTemplate.queryForObject("""
+                    SELECT survey_id, survey_title_snapshot, survey_description_snapshot, survey_schema_snapshot, answer_data, submit_time
+                    FROM survey_answer
+                    WHERE survey_id = ? AND user_id = ?
+                    """, (rs, rowNum) -> new MySurveySubmissionDetailResponse(
+                    rs.getLong("survey_id"),
+                    SurveyTitleCodec.repairLegacyTitle(rs.getString("survey_title_snapshot"), rs.getLong("survey_id")),
+                    str(rs.getString("survey_description_snapshot")),
+                    parseSchema(rs.getString("survey_schema_snapshot")),
+                    parseJsonToMap(rs.getString("answer_data")),
+                    rs.getTimestamp("submit_time").toLocalDateTime().format(DATE_TIME_FORMATTER)
+            ), id, principal.userId());
+        } catch (EmptyResultDataAccessException e) {
+            throw new BizException(ErrorCode.NOT_FOUND, "鏈壘鍒板凡鎻愪氦璁板綍");
         }
     }
 
@@ -297,11 +361,11 @@ public class SurveyService {
         SurveyModel model = getSurvey(id);
         ensureCanManageSurvey(principal, model.getId(), model.getCreatorId());
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            Sheet sheet = workbook.createSheet("答卷明细");
+            Sheet sheet = workbook.createSheet("绛斿嵎鏄庣粏");
             Row header = sheet.createRow(0);
             int col = 0;
-            header.createCell(col++).setCellValue("提交时间");
-            header.createCell(col++).setCellValue("账号");
+            header.createCell(col++).setCellValue("鎻愪氦鏃堕棿");
+            header.createCell(col++).setCellValue("璐﹀彿");
             header.createCell(col++).setCellValue("用户名");
             for (Map<String, Object> question : model.getSchema()) {
                 header.createCell(col++).setCellValue(str(question.get("title")));
@@ -335,10 +399,10 @@ public class SurveyService {
                 }
             }
             workbook.write(out);
-            logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE", "导出答卷 surveyId=" + id);
+            logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE", "瀵煎嚭绛斿嵎 surveyId=" + id);
             return out.toByteArray();
         } catch (Exception e) {
-            throw new BizException(ErrorCode.SERVER_ERROR, "导出失败: " + e.getMessage());
+            throw new BizException(ErrorCode.SERVER_ERROR, "瀵煎嚭澶辫触: " + e.getMessage());
         }
     }
 
@@ -374,7 +438,7 @@ public class SurveyService {
                 VALUES (?, ?, ?)
                 """, id, user.userId(), principal.userId());
         logService.appendSystemLog(principal.username(), "PERMISSION", "UPDATE",
-                "授权问卷 surveyId=" + id + ", userId=" + user.userId());
+                "鎺堟潈闂嵎 surveyId=" + id + ", userId=" + user.userId());
     }
 
     public void removeAuthUser(UserPrincipal principal, Long id, Long userId) {
@@ -385,13 +449,26 @@ public class SurveyService {
                 WHERE survey_id = ? AND grantee_user_id = ?
                 """, id, userId);
         logService.appendSystemLog(principal.username(), "PERMISSION", "UPDATE",
-                "撤销授权 surveyId=" + id + ", userId=" + userId);
+                "鎾ら攢鎺堟潈 surveyId=" + id + ", userId=" + userId);
     }
 
     private void ensureCanManageSurvey(UserPrincipal principal, Long surveyId, Long creatorId) {
         if (!canAccessSurvey(principal, surveyId, creatorId)) {
-            throw new BizException(ErrorCode.FORBIDDEN, "无权限访问该问卷");
+            throw new BizException(ErrorCode.FORBIDDEN, "鏃犳潈闄愯闂闂嵎");
         }
+    }
+
+    private void ensureSurveyReadableByPrincipal(UserPrincipal principal, SurveyModel model) {
+        if ("DELETED".equals(model.getStatus())) {
+            throw new BizException(ErrorCode.NOT_FOUND, "闂嵎涓嶅瓨鍦ㄦ垨涓嶅彲璁块棶");
+        }
+        if (!"PUBLISHED".equals(model.getStatus()) && !isManagerRole(principal)) {
+            throw new BizException(ErrorCode.NOT_FOUND, "闂嵎涓嶅瓨鍦ㄦ垨涓嶅彲璁块棶");
+        }
+    }
+
+    private static boolean isManagerRole(UserPrincipal principal) {
+        return "ROLE2".equals(principal.role()) || "ROLE3".equals(principal.role());
     }
 
     private boolean canAccessSurvey(UserPrincipal principal, Long surveyId, Long creatorId) {
@@ -415,17 +492,19 @@ public class SurveyService {
     private SurveyModel getSurvey(Long id) {
         try {
             return jdbcTemplate.queryForObject("""
-                    SELECT id, title, description, status, creator_user_id, created_at, schema_data, quota_enabled, quota_total
+                    SELECT id, title, description, status, creator_user_id, created_at,
+                           schema_data, allow_duplicate_submit, quota_enabled, quota_total
                     FROM survey_info
                     WHERE id = ?
                     """, (rs, rowNum) -> {
                 SurveyModel model = new SurveyModel();
                 model.setId(rs.getLong("id"));
-                model.setTitle(rs.getString("title"));
+                model.setTitle(SurveyTitleCodec.repairLegacyTitle(rs.getString("title"), rs.getLong("id")));
                 model.setDescription(rs.getString("description"));
                 model.setStatus(rs.getString("status"));
                 model.setCreatorId(rs.getLong("creator_user_id"));
                 model.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime().format(DATE_TIME_FORMATTER));
+                model.setAllowDuplicateSubmit(rs.getInt("allow_duplicate_submit") == 1);
                 model.setQuotaEnabled(rs.getInt("quota_enabled") == 1);
                 Integer quotaTotal = rs.getObject("quota_total", Integer.class);
                 model.setQuotaTotal(quotaTotal);
@@ -433,7 +512,7 @@ public class SurveyService {
                 return model;
             }, id);
         } catch (EmptyResultDataAccessException e) {
-            throw new BizException(ErrorCode.NOT_FOUND, "问卷不存在");
+            throw new BizException(ErrorCode.NOT_FOUND, "survey not found");
         }
     }
 
@@ -539,7 +618,8 @@ public class SurveyService {
                 model.getDescription(),
                 model.getStatus(),
                 cloneSchema(model.getSchema()),
-                model.getCreatorId()
+                model.getCreatorId(),
+                model.isAllowDuplicateSubmit()
         );
     }
 
@@ -551,9 +631,8 @@ public class SurveyService {
         return model.isQuotaEnabled() && model.getQuotaTotal() != null && model.getQuotaTotal() > 0;
     }
 
-    private boolean isAllowDuplicateSubmit() {
-        Integer flag = jdbcTemplate.queryForObject("SELECT allow_duplicate_submit FROM sys_settings WHERE id = ?", Integer.class, SETTINGS_ID);
-        return flag != null && flag == 1;
+    private static boolean boolFlag(Boolean value) {
+        return value != null && value;
     }
 
     private boolean hasSubmitted(Long surveyId, Long userId) {
@@ -606,7 +685,7 @@ public class SurveyService {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (Exception e) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "JSON 序列化失败");
+            throw new BizException(ErrorCode.INVALID_PARAM, "JSON serialization failed");
         }
     }
 
@@ -650,3 +729,4 @@ public class SurveyService {
         return result;
     }
 }
+

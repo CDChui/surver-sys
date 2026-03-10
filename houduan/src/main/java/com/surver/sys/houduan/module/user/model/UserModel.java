@@ -5,10 +5,12 @@ public class UserModel {
     private Long id;
     private String username;
     private String realName;
+    private String remark;
     private String role;
     private String status;
     private String createdAt;
     private boolean localAccount;
+    private String passwordHash;
 
     public Long getId() {
         return id;
@@ -32,6 +34,14 @@ public class UserModel {
 
     public void setRealName(String realName) {
         this.realName = realName;
+    }
+
+    public String getRemark() {
+        return remark;
+    }
+
+    public void setRemark(String remark) {
+        this.remark = remark;
     }
 
     public String getRole() {
@@ -64,5 +74,13 @@ public class UserModel {
 
     public void setLocalAccount(boolean localAccount) {
         this.localAccount = localAccount;
+    }
+
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
     }
 }

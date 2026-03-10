@@ -1,19 +1,23 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  getSurveyDetail,
   getPublicSurvey,
   submitSurvey,
   type PublicSurveyResult
 } from '../../api/survey'
+import { useAuthStore } from '../../stores/auth'
 
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
 
 const loading = ref(false)
 const submitting = ref(false)
 
 const survey = ref<PublicSurveyResult | null>(null)
+const entryToken = ref('')
 
 const answers = reactive<Record<number, string | string[] | number>>({})
 
@@ -26,12 +30,32 @@ const surveyId = computed(() => {
   return Number.isNaN(id) ? 1 : id
 })
 
+const isPreviewMode = computed(() => {
+  const raw = String(route.query.previewMode || route.query.preview || '').trim().toLowerCase()
+  return raw === '1' || raw === 'true' || raw === 'yes'
+})
+
+const storageUserScope = computed(() => {
+  if (authStore.userId) {
+    return `uid_${authStore.userId}`
+  }
+
+  const username = String(authStore.username || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+
+  return username ? `name_${username}` : 'anon'
+})
+
 const draftKey = computed(() => {
-  return `SURVEY_DRAFT_${surveyId.value}`
+  if (isPreviewMode.value) {
+    return `SURVEY_PREVIEW_DRAFT_${storageUserScope.value}_${surveyId.value}`
+  }
+  return `SURVEY_DRAFT_${storageUserScope.value}_${surveyId.value}`
 })
 
 const submittedKey = computed(() => {
-  return `SURVEY_SUBMITTED_${surveyId.value}`
+  return `SURVEY_SUBMITTED_${storageUserScope.value}_${surveyId.value}`
 })
 
 function goToError(type: 'not-found' | 'bad-request' | 'closed' | 'system' | 'unknown') {
@@ -103,11 +127,32 @@ function clearDraft() {
   localStorage.removeItem(draftKey.value)
 }
 
-function hasSubmittedRecord() {
-  return !!localStorage.getItem(submittedKey.value)
+async function tryLoadPreviewSurveyByDetailApi() {
+  if (!isPreviewMode.value) return false
+
+  try {
+    const response = await getSurveyDetail(surveyId.value)
+    if (response.code !== 20000 || !response.data) {
+      return false
+    }
+
+    survey.value = {
+      id: response.data.id,
+      title: response.data.title,
+      description: response.data.description,
+      schema: response.data.schema,
+      entryToken: ''
+    }
+    entryToken.value = ''
+    restoreDraft()
+    return true
+  } catch (error) {
+    return false
+  }
 }
 
-function saveSubmittedRecord() {
+function saveSubmittedRecord(submitTime: string) {
+  if (isPreviewMode.value) return
   if (!survey.value) return
 
   const payload = {
@@ -115,7 +160,10 @@ function saveSubmittedRecord() {
     surveyTitle: survey.value.title,
     surveyDescription: survey.value.description,
     schema: survey.value.schema,
-    answers: JSON.parse(JSON.stringify(answers))
+    answers: JSON.parse(JSON.stringify(answers)),
+    userId: authStore.userId,
+    username: authStore.username,
+    submitTime
   }
 
   localStorage.setItem(submittedKey.value, JSON.stringify(payload))
@@ -161,15 +209,26 @@ async function handleSubmit() {
 
     const response = await submitSurvey({
       surveyId: surveyId.value,
-      answers: JSON.parse(JSON.stringify(answers))
+      answers: JSON.parse(JSON.stringify(answers)),
+      entryToken: entryToken.value || undefined,
+      previewMode: isPreviewMode.value
     })
+
+    if (isPreviewMode.value) {
+      if (response.code === 20000 || response.code === 40009) {
+        clearDraft()
+        alert('模拟提交，问卷答案不收录')
+        await router.replace('/admin/surveys')
+        return
+      }
+    }
 
     if (response.code !== 20000) {
       alert(response.message || '提交失败')
       return
     }
 
-    saveSubmittedRecord()
+    saveSubmittedRecord(response.data.submitTime)
     clearDraft()
 
     router.push({
@@ -195,22 +254,15 @@ async function loadSurvey() {
       return
     }
 
-    if (hasSubmittedRecord()) {
-      router.replace({
-        path: '/m/blocked/duplicate',
-        query: {
-          id: String(surveyId.value)
-        }
-      })
-      return
-    }
-
     const modeQuery = String(route.query.mode || 'normal') as
       | 'normal'
       | 'quota'
       | 'duplicate'
 
-    const response = await getPublicSurvey(surveyId.value, modeQuery)
+    const response = await getPublicSurvey(surveyId.value, {
+      mode: modeQuery,
+      previewMode: isPreviewMode.value
+    })
 
     if (response.code === 40011) {
       router.replace('/m/blocked/quota')
@@ -218,18 +270,25 @@ async function loadSurvey() {
     }
 
     if (response.code === 40404) {
-       goToError('not-found')
-       return
+      goToError('not-found')
+      return
     }
 
     if (response.code === 40009) {
-      router.replace({
-        path: '/m/blocked/duplicate',
-        query: {
-          id: String(surveyId.value)
+      if (isPreviewMode.value) {
+        const loadedByFallback = await tryLoadPreviewSurveyByDetailApi()
+        if (loadedByFallback) {
+          return
         }
-      })
-      return
+      } else {
+        router.replace({
+          path: '/m/blocked/duplicate',
+          query: {
+            id: String(surveyId.value)
+          }
+        })
+        return
+      }
     }
 
     if (response.code === 40001) {
@@ -243,6 +302,7 @@ async function loadSurvey() {
     }
 
     survey.value = response.data
+    entryToken.value = response.data.entryToken || ''
     restoreDraft()
   } catch (error) {
     goToError('system')
@@ -355,7 +415,7 @@ onMounted(() => {
         <div v-else-if="question.type === 'text'">
           <van-field
             :model-value="getTextAnswer(question.id)"
-            placeholder="请输入"
+            placeholder="请输入内容"
             input-align="left"
             @update:model-value="setTextAnswer(question.id, $event)"
           />
@@ -367,7 +427,7 @@ onMounted(() => {
             rows="4"
             autosize
             type="textarea"
-            placeholder="请输入"
+            placeholder="请输入内容"
             @update:model-value="setTextAnswer(question.id, $event)"
           />
         </div>
@@ -417,3 +477,5 @@ onMounted(() => {
     </div>
   </div>
 </template>
+
+

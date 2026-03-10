@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
-import { getSystemSettings, saveSystemSettings } from '../../../api/settings'
+import { saveSystemSettings } from '../../../api/settings'
 import {
   convertAuthIntegrationToLegacyOauth,
   useSettingsStore,
@@ -21,8 +21,8 @@ const loginModeOptions: Array<{ label: string; value: AuthLoginMode }> = [
 ]
 
 const protocolOptions: Array<{ label: string; value: OauthProviderProtocol }> = [
-  { label: 'IAM 模板', value: 'IAM_TEMPLATE' },
-  { label: 'OAuth2 通用授权码', value: 'OAUTH2' },
+  { label: 'IAM 模板协议', value: 'IAM_TEMPLATE' },
+  { label: 'OAuth2 标准协议', value: 'OAUTH2' },
   { label: 'OIDC', value: 'OIDC' }
 ]
 
@@ -96,6 +96,23 @@ function cloneIntegration(source: AuthIntegrationSettings): AuthIntegrationSetti
   }
 }
 
+function getDefaultIamUris() {
+  const domain = settingsStore.settings.systemDomain.trim().replace(/\/+$/, '')
+  let domainBase = ''
+
+  if (/^https?:\/\//i.test(domain)) {
+    domainBase = domain
+  } else if (domain) {
+    const protocol = window.location.protocol || 'https:'
+    domainBase = `${protocol}//${domain}`
+  }
+
+  return {
+    redirectUri: domainBase ? `${domainBase}/auth/sso/callback` : '',
+    logoutRedirectUri: domainBase ? `${domainBase}/auth/logout` : ''
+  }
+}
+
 function createProviderTemplate(): OauthProviderConfig {
   const endpoints = buildIamEndpointMap('')
   const defaultUris = getDefaultIamUris()
@@ -125,7 +142,7 @@ function createProviderTemplate(): OauthProviderConfig {
 }
 
 function getProtocolText(protocol: OauthProviderProtocol) {
-  if (protocol === 'IAM_TEMPLATE') return 'IAM 模板'
+  if (protocol === 'IAM_TEMPLATE') return 'IAM 模板协议'
   if (protocol === 'OIDC') return 'OIDC'
   return 'OAuth2'
 }
@@ -179,14 +196,14 @@ function isHttpUrl(text: string) {
 }
 
 function validateProvider(provider: OauthProviderConfig) {
-  if (!provider.name.trim()) return '认证平台名称不能为空'
+  if (!provider.name.trim()) return '请输入认证平台名称'
 
   if (provider.redirectUri && !isHttpUrl(provider.redirectUri)) {
-    return '回调地址 redirect_uri 需以 http:// 或 https:// 开头'
+    return 'redirect_uri 必须以 http:// 或 https:// 开头'
   }
 
   if (provider.logoutRedirectUri && !isHttpUrl(provider.logoutRedirectUri)) {
-    return '退出回跳地址需以 http:// 或 https:// 开头'
+    return '退出回跳地址必须以 http:// 或 https:// 开头'
   }
 
   if (!provider.enabled) return ''
@@ -194,8 +211,9 @@ function validateProvider(provider: OauthProviderConfig) {
   if (!provider.clientId.trim()) return `${provider.name}: client_id 不能为空`
   if (!provider.clientSecret.trim()) return `${provider.name}: client_secret 不能为空`
   if (!provider.redirectUri.trim()) return `${provider.name}: redirect_uri 不能为空`
+
   if (!isHttpUrl(provider.redirectUri)) {
-    return `${provider.name}: redirect_uri 需以 http:// 或 https:// 开头`
+    return `${provider.name}: redirect_uri 必须以 http:// 或 https:// 开头`
   }
 
   if (provider.protocol === 'IAM_TEMPLATE') {
@@ -208,23 +226,23 @@ function validateProvider(provider: OauthProviderConfig) {
   if (!provider.userInfoUrl.trim()) return `${provider.name}: userinfo_url 不能为空`
 
   if (!isHttpUrl(provider.authorizeUrl)) {
-    return `${provider.name}: authorize_url 需以 http:// 或 https:// 开头`
+    return `${provider.name}: authorize_url 必须以 http:// 或 https:// 开头`
   }
 
   if (!isHttpUrl(provider.tokenUrl)) {
-    return `${provider.name}: token_url 需以 http:// 或 https:// 开头`
+    return `${provider.name}: token_url 必须以 http:// 或 https:// 开头`
   }
 
   if (!isHttpUrl(provider.userInfoUrl)) {
-    return `${provider.name}: userinfo_url 需以 http:// 或 https:// 开头`
+    return `${provider.name}: userinfo_url 必须以 http:// 或 https:// 开头`
   }
 
   if (provider.refreshUrl && !isHttpUrl(provider.refreshUrl)) {
-    return `${provider.name}: refresh_url 需以 http:// 或 https:// 开头`
+    return `${provider.name}: refresh_url 必须以 http:// 或 https:// 开头`
   }
 
   if (provider.revokeUrl && !isHttpUrl(provider.revokeUrl)) {
-    return `${provider.name}: revoke_url 需以 http:// 或 https:// 开头`
+    return `${provider.name}: revoke_url 必须以 http:// 或 https:// 开头`
   }
 
   return ''
@@ -284,7 +302,7 @@ function handleDuplicateProvider(provider: OauthProviderConfig) {
 }
 
 function handleDeleteProvider(provider: OauthProviderConfig) {
-  const accepted = window.confirm(`确认删除认证平台“${provider.name}”？`)
+  const accepted = window.confirm(`确定删除认证平台「${provider.name}」吗？`)
   if (!accepted) return
 
   const index = form.providers.findIndex((item) => item.id === provider.id)
@@ -302,17 +320,22 @@ function handleSaveProviderDialog() {
     return
   }
 
+  let updated = false
+
   if (editingProviderId.value) {
     const index = form.providers.findIndex((item) => item.id === editingProviderId.value)
     if (index >= 0) {
       form.providers[index] = normalized
+      updated = true
     }
-  } else {
+  }
+
+  if (!updated) {
     form.providers.push(normalized)
   }
 
-  providerDialogVisible.value = false
   ensureDefaultProvider()
+  void handleSave(true)
 }
 
 function handleValidateProvider(provider: OauthProviderConfig) {
@@ -322,19 +345,19 @@ function handleValidateProvider(provider: OauthProviderConfig) {
     return
   }
 
-  alert(`平台“${provider.name}”配置校验通过`)
+  alert(`校验通过：${provider.name}`)
 }
 
 function validateIntegration(integration: AuthIntegrationSettings) {
   if (integration.providers.length === 0) {
     if (integration.loginMode === 'LOCAL_ONLY') return ''
-    return '当前登录模式要求至少配置 1 个认证平台'
+    return '请至少配置 1 个认证平台'
   }
 
   const enabledProviders = integration.providers.filter((item) => item.enabled)
 
   if (integration.loginMode !== 'LOCAL_ONLY' && enabledProviders.length === 0) {
-    return '当前登录模式要求至少启用 1 个认证平台'
+    return '第三方登录模式下，至少需要启用 1 个认证平台'
   }
 
   if (integration.loginMode !== 'LOCAL_ONLY') {
@@ -342,7 +365,7 @@ function validateIntegration(integration: AuthIntegrationSettings) {
       (item) => item.id === integration.defaultProviderId
     )
     if (!hasDefaultEnabled) {
-      return '默认认证平台必须是已启用状态'
+      return '默认认证平台必须是已启用的平台'
     }
   }
 
@@ -378,36 +401,7 @@ function normalizeIntegrationForSave() {
   return integration
 }
 
-function getDefaultIamUris() {
-  const domainBase = formatDomainAsUrl(settingsStore.settings.systemDomain)
-
-  return {
-    redirectUri: domainBase ? `${domainBase}/auth/sso/callback` : '',
-    logoutRedirectUri: domainBase ? `${domainBase}/auth/logout` : ''
-  }
-}
-
-async function handleValidateAll() {
-  const integration = normalizeIntegrationForSave()
-  const message = validateIntegration(integration)
-
-  if (message) {
-    alert(message)
-    return
-  }
-
-  alert('第三方认证配置校验通过')
-}
-
-async function handleSave() {
-  const integration = normalizeIntegrationForSave()
-  const message = validateIntegration(integration)
-
-  if (message) {
-    alert(message)
-    return
-  }
-
+async function persistIntegration(integration: AuthIntegrationSettings, fromDialog = false) {
   const payload = {
     ...settingsStore.settings,
     authIntegration: integration,
@@ -419,64 +413,59 @@ async function handleSave() {
 
     if (response.code !== 20000) {
       alert(response.message || '第三方对接设置保存失败')
-      return
+      return false
     }
 
+    settingsStore.saveSettings(payload)
     appendOperationLog({
       module: 'SYSTEM',
       action: 'UPDATE',
       target: `第三方对接设置（${getModeText(integration.loginMode)}）`
     })
 
-    alert('第三方对接设置已保存')
+    if (fromDialog) {
+      providerDialogVisible.value = false
+      editingProviderId.value = ''
+      alert('认证平台已保存并立即生效')
+    } else {
+      alert('第三方对接设置已保存')
+    }
+    return true
   } catch (error) {
     alert('第三方对接设置保存失败')
+    return false
   }
 }
 
-async function handleReset() {
-  try {
-    const response = await getSystemSettings()
+async function handleSave(fromDialog = false) {
+  const integration = normalizeIntegrationForSave()
+  const message = validateIntegration(integration)
 
-    if (response.code !== 20000) {
-      alert(response.message || '读取系统设置失败')
-      return
-    }
-
-    const next = cloneIntegration(response.data.authIntegration)
-    form.loginMode = next.loginMode
-    form.defaultProviderId = next.defaultProviderId
-    form.autoCreateUser = next.autoCreateUser
-    form.defaultRole = next.defaultRole
-    form.providers.splice(0, form.providers.length, ...next.providers)
-
-    alert('已重置为当前保存配置')
-  } catch (error) {
-    alert('读取系统设置失败')
+  if (message) {
+    alert(message)
+    return false
   }
+
+  return persistIntegration(integration, fromDialog)
 }
 </script>
 
 <template>
-  <div style="max-width: 1100px;">
-    <div style="font-size: 16px; font-weight: 700; margin-bottom: 16px;">
-      第三方对接（通用 OAuth）
-    </div>
+  <div class="page-container">
+    <el-card>
+      <div class="action-row">
+        <el-button type="primary" @click="handleSave()">保存设置</el-button>
+      </div>
+    </el-card>
 
-    <el-card style="margin-bottom: 16px;">
+    <el-card>
       <template #header>
-        <div style="font-weight: 700;">全局认证设置</div>
+        <div class="card-title">全局认证设置</div>
       </template>
 
-      <div
-        style="
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 16px;
-        "
-      >
+      <div class="grid-two">
         <div>
-          <div style="margin-bottom: 8px; font-weight: 600;">登录模式</div>
+          <div class="field-label">登录模式</div>
           <el-select v-model="form.loginMode" style="width: 100%;">
             <el-option
               v-for="item in loginModeOptions"
@@ -488,7 +477,7 @@ async function handleReset() {
         </div>
 
         <div>
-          <div style="margin-bottom: 8px; font-weight: 600;">默认认证平台</div>
+          <div class="field-label">默认认证平台</div>
           <el-select
             v-model="form.defaultProviderId"
             style="width: 100%;"
@@ -505,12 +494,12 @@ async function handleReset() {
         </div>
 
         <div>
-          <div style="margin-bottom: 8px; font-weight: 600;">首次登录自动创建用户</div>
+          <div class="field-label">首次登录自动创建用户</div>
           <el-switch v-model="form.autoCreateUser" />
         </div>
 
         <div>
-          <div style="margin-bottom: 8px; font-weight: 600;">新用户默认角色</div>
+          <div class="field-label">新用户默认角色</div>
           <el-select v-model="form.defaultRole" style="width: 100%;">
             <el-option
               v-for="item in roleOptions"
@@ -525,19 +514,7 @@ async function handleReset() {
 
     <el-card>
       <template #header>
-        <div
-          style="
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-          "
-        >
-          <div style="font-weight: 700;">认证平台列表</div>
-          <el-button type="primary" @click="openCreateProviderDialog">
-            新增认证平台
-          </el-button>
-        </div>
+        <div class="card-title">认证平台列表</div>
       </template>
 
       <el-table :data="providerList" style="width: 100%;">
@@ -567,7 +544,7 @@ async function handleReset() {
 
         <el-table-column label="操作" min-width="300" fixed="right">
           <template #default="{ row }">
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <div class="table-actions">
               <el-button type="primary" link @click="openEditProviderDialog(row)">
                 编辑
               </el-button>
@@ -587,41 +564,26 @@ async function handleReset() {
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="provider-actions-row">
+        <el-button type="primary" @click="openCreateProviderDialog">新增认证平台</el-button>
+        <span class="meta-text">当前平台：{{ providerList.length }} 个</span>
+      </div>
     </el-card>
-
-    <div style="display: flex; gap: 12px; margin-top: 16px;">
-      <el-button type="primary" @click="handleSave">
-        保存第三方对接设置
-      </el-button>
-
-      <el-button @click="handleValidateAll">
-        校验配置
-      </el-button>
-
-      <el-button @click="handleReset">
-        重置
-      </el-button>
-    </div>
 
     <el-dialog
       v-model="providerDialogVisible"
       :title="editingProviderId ? '编辑认证平台' : '新增认证平台'"
       width="920px"
     >
-      <div
-        style="
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 16px;
-        "
-      >
+      <div class="grid-two">
         <div>
-          <div style="margin-bottom: 8px; font-weight: 600;">平台名称</div>
+          <div class="field-label">平台名称</div>
           <el-input v-model="providerForm.name" placeholder="例如：校园统一身份认证" />
         </div>
 
         <div>
-          <div style="margin-bottom: 8px; font-weight: 600;">协议类型</div>
+          <div class="field-label">协议类型</div>
           <el-select v-model="providerForm.protocol" style="width: 100%;">
             <el-option
               v-for="item in protocolOptions"
@@ -633,12 +595,12 @@ async function handleReset() {
         </div>
 
         <div>
-          <div style="margin-bottom: 8px; font-weight: 600;">是否启用</div>
+          <div class="field-label">是否启用</div>
           <el-switch v-model="providerForm.enabled" />
         </div>
 
         <div>
-          <div style="margin-bottom: 8px; font-weight: 600;">优先级（数字越小越优先）</div>
+          <div class="field-label">优先级（数字越小越优先）</div>
           <el-input-number
             v-model="providerForm.priority"
             :min="1"
@@ -648,8 +610,8 @@ async function handleReset() {
         </div>
 
         <template v-if="providerForm.protocol === 'IAM_TEMPLATE'">
-          <div style="grid-column: 1 / -1;">
-            <div style="margin-bottom: 8px; font-weight: 600;">IAM 认证域名</div>
+          <div class="span-all">
+            <div class="field-label">IAM 认证域名</div>
             <el-input
               v-model="providerForm.authDomain"
               placeholder="例如：auth.sztu.edu.cn"
@@ -658,7 +620,7 @@ async function handleReset() {
         </template>
 
         <div>
-          <div style="margin-bottom: 8px; font-weight: 600;">client_id</div>
+          <div class="field-label">client_id</div>
           <el-input
             v-model="providerForm.clientId"
             placeholder="请输入 OAuth 客户端 ID"
@@ -666,7 +628,7 @@ async function handleReset() {
         </div>
 
         <div>
-          <div style="margin-bottom: 8px; font-weight: 600;">client_secret</div>
+          <div class="field-label">client_secret</div>
           <el-input
             v-model="providerForm.clientSecret"
             type="password"
@@ -676,38 +638,47 @@ async function handleReset() {
         </div>
 
         <div>
-          <div style="margin-bottom: 8px; font-weight: 600;">scope</div>
-          <el-input v-model="providerForm.scope" placeholder="例如：openid profile email" />
-        </div>
-
-        <div>
-          <div style="margin-bottom: 8px; font-weight: 600;">用户唯一标识字段</div>
+          <div class="field-label">scope</div>
           <el-input
-            v-model="providerForm.userIdField"
-            placeholder="例如：employeeNumber（学工号）或 sub"
+            v-model="providerForm.scope"
+            placeholder="例如：openid profile email"
           />
         </div>
 
         <div>
-          <div style="margin-bottom: 8px; font-weight: 600;">姓名字段</div>
-          <el-input v-model="providerForm.realNameField" placeholder="例如：displayName 或 name" />
+          <div class="field-label">用户唯一标识字段</div>
+          <el-input
+            v-model="providerForm.userIdField"
+            placeholder="例如：employeeNumber 或 sub"
+          />
         </div>
 
         <div>
-          <div style="margin-bottom: 8px; font-weight: 600;">邮箱字段</div>
-          <el-input v-model="providerForm.emailField" placeholder="例如：mail 或 email" />
+          <div class="field-label">名称字段</div>
+          <el-input
+            v-model="providerForm.realNameField"
+            placeholder="例如：displayName 或 name"
+          />
         </div>
 
-        <div style="grid-column: 1 / -1;">
-          <div style="margin-bottom: 8px; font-weight: 600;">回调地址 redirect_uri</div>
+        <div>
+          <div class="field-label">邮箱字段</div>
+          <el-input
+            v-model="providerForm.emailField"
+            placeholder="例如：mail 或 email"
+          />
+        </div>
+
+        <div class="span-all">
+          <div class="field-label">回调地址 redirect_uri</div>
           <el-input
             v-model="providerForm.redirectUri"
             placeholder="例如：https://survey.example.com/auth/sso/callback"
           />
         </div>
 
-        <div style="grid-column: 1 / -1;">
-          <div style="margin-bottom: 8px; font-weight: 600;">退出回跳地址</div>
+        <div class="span-all">
+          <div class="field-label">退出回跳地址</div>
           <el-input
             v-model="providerForm.logoutRedirectUri"
             placeholder="例如：https://survey.example.com/auth/logout"
@@ -715,40 +686,40 @@ async function handleReset() {
         </div>
 
         <template v-if="providerForm.protocol !== 'IAM_TEMPLATE'">
-          <div style="grid-column: 1 / -1;">
-            <div style="margin-bottom: 8px; font-weight: 600;">authorize_url</div>
+          <div class="span-all">
+            <div class="field-label">authorize_url</div>
             <el-input
               v-model="providerForm.authorizeUrl"
               placeholder="例如：https://auth.example.com/oauth2/authorize"
             />
           </div>
 
-          <div style="grid-column: 1 / -1;">
-            <div style="margin-bottom: 8px; font-weight: 600;">token_url</div>
+          <div class="span-all">
+            <div class="field-label">token_url</div>
             <el-input
               v-model="providerForm.tokenUrl"
               placeholder="例如：https://auth.example.com/oauth2/token"
             />
           </div>
 
-          <div style="grid-column: 1 / -1;">
-            <div style="margin-bottom: 8px; font-weight: 600;">userinfo_url</div>
+          <div class="span-all">
+            <div class="field-label">userinfo_url</div>
             <el-input
               v-model="providerForm.userInfoUrl"
               placeholder="例如：https://auth.example.com/oauth2/userinfo"
             />
           </div>
 
-          <div style="grid-column: 1 / -1;">
-            <div style="margin-bottom: 8px; font-weight: 600;">refresh_url（可选）</div>
+          <div class="span-all">
+            <div class="field-label">refresh_url（可选）</div>
             <el-input
               v-model="providerForm.refreshUrl"
               placeholder="例如：https://auth.example.com/oauth2/refresh"
             />
           </div>
 
-          <div style="grid-column: 1 / -1;">
-            <div style="margin-bottom: 8px; font-weight: 600;">revoke_url（可选）</div>
+          <div class="span-all">
+            <div class="field-label">revoke_url（可选）</div>
             <el-input
               v-model="providerForm.revokeUrl"
               placeholder="例如：https://auth.example.com/oauth2/revoke"
@@ -757,12 +728,12 @@ async function handleReset() {
         </template>
       </div>
 
-      <el-card style="margin-top: 16px;">
+      <el-card class="preview-card">
         <template #header>
-          <div style="font-weight: 700;">接口地址预览</div>
+          <div class="card-title">接口地址预览</div>
         </template>
 
-        <div style="display: grid; gap: 10px; font-size: 13px;">
+        <div class="preview-grid">
           <div><b>authorize：</b>{{ providerUrlPreview.authorizeUrl || '-' }}</div>
           <div><b>token：</b>{{ providerUrlPreview.tokenUrl || '-' }}</div>
           <div><b>userinfo：</b>{{ providerUrlPreview.userInfoUrl || '-' }}</div>
@@ -772,15 +743,85 @@ async function handleReset() {
       </el-card>
 
       <template #footer>
-        <div style="display: flex; justify-content: flex-end; gap: 12px;">
-          <el-button @click="providerDialogVisible = false">
-            取消
-          </el-button>
-          <el-button type="primary" @click="handleSaveProviderDialog">
-            保存平台
-          </el-button>
+        <div class="dialog-footer">
+          <el-button @click="providerDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="handleSaveProviderDialog">保存平台</el-button>
         </div>
       </template>
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.page-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.action-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.meta-text {
+  color: #666;
+}
+
+.card-title {
+  font-weight: 700;
+}
+
+.grid-two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.span-all {
+  grid-column: 1 / -1;
+}
+
+.field-label {
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.table-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.preview-card {
+  margin-top: 16px;
+}
+
+.preview-grid {
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.provider-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+@media (max-width: 992px) {
+  .grid-two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+</style>

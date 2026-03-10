@@ -7,12 +7,21 @@ export interface UserItem {
   id: number
   username: string
   realName: string
+  remark: string
   role: UserRole
   status: UserStatus
   createdAt: string
+  localAccount: boolean
 }
 
 const USER_LIST_KEY = 'USER_LIST'
+const DEFAULT_LOCAL_TEST_USERNAMES = new Set([
+  'admin',
+  'teacher01',
+  'student01',
+  'counselor01',
+  'student02'
+])
 
 function getDefaultUsers(): UserItem[] {
   return [
@@ -20,41 +29,51 @@ function getDefaultUsers(): UserItem[] {
       id: 1,
       username: 'admin',
       realName: '系统管理员',
+      remark: '默认管理员账号',
       role: 'ROLE3',
       status: 'ENABLED',
-      createdAt: '2026-03-01 09:00'
+      createdAt: '2026-03-01 09:00',
+      localAccount: true
     },
     {
       id: 2,
       username: 'teacher01',
       realName: '张老师',
+      remark: '默认测试账号',
       role: 'ROLE2',
       status: 'ENABLED',
-      createdAt: '2026-03-02 10:30'
+      createdAt: '2026-03-02 10:30',
+      localAccount: true
     },
     {
       id: 3,
       username: 'counselor01',
       realName: '李辅导员',
+      remark: '默认测试账号',
       role: 'ROLE2',
       status: 'DISABLED',
-      createdAt: '2026-03-03 11:20'
+      createdAt: '2026-03-03 11:20',
+      localAccount: true
     },
     {
       id: 4,
       username: 'student01',
       realName: '王同学',
+      remark: '默认测试账号',
       role: 'ROLE1',
       status: 'ENABLED',
-      createdAt: '2026-03-04 14:10'
+      createdAt: '2026-03-04 14:10',
+      localAccount: true
     },
     {
       id: 5,
       username: 'student02',
       realName: '赵同学',
+      remark: '默认测试账号',
       role: 'ROLE1',
       status: 'ENABLED',
-      createdAt: '2026-03-05 15:00'
+      createdAt: '2026-03-05 15:00',
+      localAccount: true
     }
   ]
 }
@@ -67,7 +86,21 @@ function ensureStorage() {
 
 function readUsers(): UserItem[] {
   ensureStorage()
-  return JSON.parse(localStorage.getItem(USER_LIST_KEY) || '[]')
+  const list = JSON.parse(localStorage.getItem(USER_LIST_KEY) || '[]') as Array<
+    Partial<UserItem>
+  >
+  return list.map((item) => ({
+    id: Number(item.id) || 0,
+    username: String(item.username || ''),
+    realName: String(item.realName || ''),
+    remark: String(item.remark || ''),
+    role: (item.role as UserRole) || 'ROLE1',
+    status: (item.status as UserStatus) || 'ENABLED',
+    createdAt: String(item.createdAt || ''),
+    localAccount: DEFAULT_LOCAL_TEST_USERNAMES.has(String(item.username || ''))
+      ? true
+      : Boolean(item.localAccount)
+  }))
 }
 
 function writeUsers(users: UserItem[]) {
@@ -109,6 +142,7 @@ export const useUserStore = defineStore('user', {
     createUser(payload: {
       username: string
       realName: string
+      remark: string
       role: UserRole
       status: UserStatus
     }) {
@@ -121,9 +155,11 @@ export const useUserStore = defineStore('user', {
           id: nextId,
           username: payload.username,
           realName: payload.realName,
+          remark: payload.remark,
           role: payload.role,
           status: payload.status,
-          createdAt: getNowText()
+          createdAt: getNowText(),
+          localAccount: true
         },
         ...list
       ]

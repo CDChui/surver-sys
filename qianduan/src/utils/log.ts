@@ -1,6 +1,7 @@
 import { createLog, type LogAction, type LogModule } from '../api/log'
 import { useAuthStore } from '../stores/auth'
 import { useSettingsStore } from '../stores/settings'
+import { USE_REAL_API } from '../config/env'
 
 interface AppendOperationLogParams {
   module: LogModule
@@ -12,6 +13,11 @@ interface AppendOperationLogParams {
 
 export function appendOperationLog(params: AppendOperationLogParams) {
   try {
+    if (USE_REAL_API) {
+      // 真实后端已在服务端统一落库审计日志，前端不再重复写入
+      return
+    }
+
     const settingsStore = useSettingsStore()
     if (!params.force && !settingsStore.settings.enableLog) {
       return

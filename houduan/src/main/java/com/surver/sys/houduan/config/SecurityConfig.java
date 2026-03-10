@@ -48,6 +48,7 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/api/auth/local/login",
                                 "/api/auth/oauth/callback",
+                                "/api/settings/public-auth",
                                 "/api/test"
                         ).permitAll()
                         .anyRequest().authenticated()

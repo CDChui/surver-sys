@@ -1,12 +1,14 @@
 package com.surver.sys.houduan.security;
 
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 
 @Service
-public class TokenBlacklistService {
+@Profile("!nodeps")
+public class TokenBlacklistService implements TokenBlacklistServiceApi {
 
     private static final String KEY_PREFIX = "jwt:blacklist:";
 

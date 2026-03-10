@@ -1,0 +1,29 @@
+[run.ps1] JAVA_HOME=C:\Program Files\Microsoft\jdk-17.0.11.9-hotspot
+[run.ps1] Running: .\mvnw.cmd -DskipTests spring-boot:run -Dspring-boot.run.profiles=nodeps
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] -----------------------< com.surver.sys:houduan >-----------------------
+[INFO] Building houduan 0.0.1-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] >>> spring-boot:3.3.10:run (default-cli) > test-compile @ houduan >>>
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ houduan ---
+[INFO] Copying 2 resources from src\main\resources to target\classes
+[INFO] Copying 4 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ houduan ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ houduan ---
+[INFO] skip non existing resourceDirectory D:\code\surver-sys\houduan\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ houduan ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] <<< spring-boot:3.3.10:run (default-cli) < test-compile @ houduan <<<
+[INFO] 
+[INFO] 
+[INFO] --- spring-boot:3.3.10:run (default-cli) @ houduan ---
+[INFO] Attaching agents: []

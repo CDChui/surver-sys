@@ -1,30 +1,21 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { PublicSurveyResult } from '../../api/survey'
-
-type ReviewAnswer = Record<number, string | string[] | number>
-
-interface SubmittedPayload {
-  surveyId: number
-  surveyTitle: string
-  surveyDescription: string
-  schema: PublicSurveyResult['schema']
-  answers: ReviewAnswer
-}
+import {
+  getMySurveySubmissionDetail,
+  type MySurveySubmissionDetailResult
+} from '../../api/survey'
 
 const route = useRoute()
 const router = useRouter()
 
 const surveyId = computed(() => {
   const id = Number(route.query.id || 1)
-  return Number.isNaN(id) ? 1 : id
+  return Number.isNaN(id) ? 0 : id
 })
 
-const submittedKey = computed(() => `SURVEY_SUBMITTED_${surveyId.value}`)
-
 const loading = ref(false)
-const submitted = ref<SubmittedPayload | null>(null)
+const submitted = ref<MySurveySubmissionDetailResult | null>(null)
 
 function getAnswerText(value: string | string[] | number | undefined) {
   if (Array.isArray(value)) {
@@ -39,17 +30,23 @@ function getAnswerText(value: string | string[] | number | undefined) {
 }
 
 async function loadSubmitted() {
+  if (!surveyId.value) {
+    alert('问卷参数错误')
+    router.push('/m')
+    return
+  }
+
   try {
     loading.value = true
+    const response = await getMySurveySubmissionDetail(surveyId.value)
 
-    const raw = localStorage.getItem(submittedKey.value)
-    if (!raw) {
-      alert('未找到已提交记录')
+    if (response.code !== 20000) {
+      alert(response.message || '未找到已提交记录')
       router.push('/m')
       return
     }
 
-    submitted.value = JSON.parse(raw) as SubmittedPayload
+    submitted.value = response.data
   } catch (error) {
     alert('加载已提交答案失败')
     router.push('/m')
@@ -60,10 +57,6 @@ async function loadSubmitted() {
 
 function goHome() {
   router.push('/m')
-}
-
-function goSurvey() {
-  router.push(`/m/surveys/${surveyId.value}`)
 }
 
 onMounted(() => {
@@ -93,6 +86,9 @@ onMounted(() => {
         <p style="margin: 0; color: #666; line-height: 1.7;">
           {{ submitted.surveyDescription }}
         </p>
+        <div style="margin-top: 12px; color: #666; font-size: 13px;">
+          提交时间：{{ submitted.submitTime || '-' }}
+        </div>
       </div>
 
       <div
@@ -105,7 +101,7 @@ onMounted(() => {
           margin-bottom: 16px;
         "
       >
-        当前为只读回看模式，你看到的是已提交的答案内容。
+        当前为只读回看模式，你看到的是已提交时保存的答案与问卷快照。
       </div>
 
       <div
@@ -133,19 +129,14 @@ onMounted(() => {
             line-height: 1.8;
           "
         >
-          {{ getAnswerText(submitted.answers[question.id]) }}
+          {{ getAnswerText(submitted.answers[String(question.id)]) }}
         </div>
       </div>
 
-      <div style="display: flex; flex-direction: column; gap: 12px;">
-        <van-button type="primary" block @click="goHome">
-          返回首页
-        </van-button>
-
-        <van-button plain block @click="goSurvey">
-          返回问卷页
-        </van-button>
-      </div>
+      <van-button type="primary" block @click="goHome">
+        返回个人首页
+      </van-button>
     </div>
   </div>
 </template>
+

@@ -14,6 +14,7 @@ public class SurveyModel {
     private String status;
     private Long creatorId;
     private String createdAt;
+    private boolean allowDuplicateSubmit;
     private boolean quotaEnabled;
     private Integer quotaTotal;
     private List<Map<String, Object>> schema = new ArrayList<>();
@@ -65,6 +66,14 @@ public class SurveyModel {
 
     public void setCreatedAt(String createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public boolean isAllowDuplicateSubmit() {
+        return allowDuplicateSubmit;
+    }
+
+    public void setAllowDuplicateSubmit(boolean allowDuplicateSubmit) {
+        this.allowDuplicateSubmit = allowDuplicateSubmit;
     }
 
     public boolean isQuotaEnabled() {

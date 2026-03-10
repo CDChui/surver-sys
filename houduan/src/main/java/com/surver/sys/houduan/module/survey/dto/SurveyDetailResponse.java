@@ -9,6 +9,7 @@ public record SurveyDetailResponse(
         String description,
         String status,
         List<Map<String, Object>> schema,
-        Long creatorId
+        Long creatorId,
+        boolean allowDuplicateSubmit
 ) {
 }

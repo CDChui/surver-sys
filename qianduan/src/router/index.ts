@@ -23,6 +23,7 @@ import UserManagement from '../views/admin/UserManagement.vue'
 import PermissionManagement from '../views/admin/PermissionManagement.vue'
 import LogManagement from '../views/admin/LogManagement.vue'
 import SystemSettings from '../views/admin/SystemSettings.vue'
+import ChangePassword from '../views/admin/ChangePassword.vue'
 import BasicSettings from '../views/admin/settings/BasicSettings.vue'
 import ThirdPartyIntegration from '../views/admin/settings/ThirdPartyIntegration.vue'
 import { buildLoginPathWithRedirect, getPostLoginPath } from '../utils/auth-redirect'
@@ -30,6 +31,7 @@ import {
   beginThirdPartyLogin,
   shouldAutoThirdPartyForAdmin
 } from '../utils/oauth-login'
+import { getPublicAuthSettings } from '../api/settings'
 
 const routes = [
   {
@@ -38,7 +40,10 @@ const routes = [
   },
   {
     path: '/m',
-    component: MobileHome
+    component: MobileHome,
+    meta: {
+      requiresLogin: true
+    }
   },
   {
     path: '/m/surveys/:id',
@@ -49,7 +54,10 @@ const routes = [
   },
   {
     path: '/m/success',
-    component: SubmitSuccess
+    component: SubmitSuccess,
+    meta: {
+      requiresLogin: true
+    }
   },
   {
     path: '/m/blocked/quota',
@@ -57,11 +65,17 @@ const routes = [
   },
   {
     path: '/m/blocked/duplicate',
-    component: BlockedDuplicate
+    component: BlockedDuplicate,
+    meta: {
+      requiresLogin: true
+    }
   },
   {
     path: '/m/review',
-    component: ReviewSubmitted
+    component: ReviewSubmitted,
+    meta: {
+      requiresLogin: true
+    }
   },
   {
     path: '/m/error',
@@ -134,6 +148,10 @@ const routes = [
         component: LogManagement
       },
       {
+        path: 'password',
+        component: ChangePassword
+      },
+      {
         path: 'settings',
         component: SystemSettings,
         children: [
@@ -160,35 +178,53 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
+async function tryLoadPublicAuthSettings() {
+  try {
+    const response = await getPublicAuthSettings()
+    if (response.code !== 20000 || !response.data?.authIntegration) {
+      return null
+    }
+
+    return response.data.authIntegration
+  } catch (error) {
+    // keep route guard resilient when public settings endpoint is unavailable
+    return null
+  }
+}
+
+router.beforeEach(async (to) => {
   const authStore = useAuthStore()
   const permissionStore = usePermissionStore()
   const settingsStore = useSettingsStore()
   const hasToken = !!authStore.token
 
   if ((to.meta.requiresAuth || to.meta.requiresLogin) && !hasToken) {
-    if (to.meta.requiresAuth && shouldAutoThirdPartyForAdmin(settingsStore.settings)) {
-      const oauthResult = beginThirdPartyLogin(settingsStore.settings, to.fullPath)
+    const publicAuthIntegration = await tryLoadPublicAuthSettings()
+    const settingsForOauth = publicAuthIntegration
+      ? {
+          ...settingsStore.settings,
+          authIntegration: publicAuthIntegration
+        }
+      : settingsStore.settings
+
+    if (shouldAutoThirdPartyForAdmin(settingsForOauth)) {
+      const oauthResult = beginThirdPartyLogin(settingsForOauth, to.fullPath)
 
       if (oauthResult.ok) {
         window.location.href = oauthResult.url
-        next(false)
-        return
+        return false
       }
     }
 
-    next(buildLoginPathWithRedirect(to.fullPath))
-    return
+    return buildLoginPathWithRedirect(to.fullPath)
   }
 
   if (to.meta.requiresAdminAccess && authStore.isRole1) {
-    next('/m')
-    return
+    return '/m'
   }
 
   if (to.meta.guestOnly && hasToken) {
-    next(getPostLoginPath(authStore.role, to.query.redirect))
-    return
+    return getPostLoginPath(authStore.role, to.query.redirect)
   }
 
   if (typeof to.meta.requiredPermission === 'string') {
@@ -197,12 +233,9 @@ router.beforeEach((to, from, next) => {
     const rolePermissions = isKnownRole ? permissionStore.rolePermissionMap[role] || [] : []
 
     if (!rolePermissions.includes(to.meta.requiredPermission)) {
-      next('/admin/surveys')
-      return
+      return '/admin/surveys'
     }
   }
-
-  next()
 })
 
 export default router

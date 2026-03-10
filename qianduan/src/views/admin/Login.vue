@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useAuthStore, type UserRole } from '../../stores/auth'
+import { useAuthStore } from '../../stores/auth'
+import { localLogin } from '../../api/auth'
+import { USE_REAL_API } from '../../config/env'
 import { useSettingsStore } from '../../stores/settings'
 import { appendOperationLog } from '../../utils/log'
 import { getPostLoginPath } from '../../utils/auth-redirect'
 import {
   beginThirdPartyLogin,
-  getDefaultEnabledProvider,
   shouldAutoThirdPartyForAdmin
 } from '../../utils/oauth-login'
 
@@ -16,50 +17,18 @@ const route = useRoute()
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
 
-const username = ref('admin')
-const password = ref('123456')
-const role = ref<UserRole>('ROLE3')
+const username = ref('')
+const password = ref('')
 const loading = ref(false)
 const oauthLoading = ref(false)
+const isRealApi = USE_REAL_API
 
 const canUseThirdPartyLogin = computed(() =>
   shouldAutoThirdPartyForAdmin(settingsStore.settings)
 )
 
-const defaultProviderName = computed(() => {
-  const provider = getDefaultEnabledProvider(settingsStore.settings)
-  return provider?.name || '第三方认证'
-})
-
-function getMockUserInfo(selectedRole: UserRole) {
-  if (selectedRole === 'ROLE1') {
-    return {
-      token: 'mock-token-role1',
-      role: 'ROLE1' as UserRole,
-      username: 'student01',
-      realName: '王同学',
-      userId: 4
-    }
-  }
-
-  if (selectedRole === 'ROLE2') {
-    return {
-      token: 'mock-token-role2',
-      role: 'ROLE2' as UserRole,
-      username: 'teacher01',
-      realName: '张老师',
-      userId: 2
-    }
-  }
-
-  return {
-    token: 'mock-token-role3',
-    role: 'ROLE3' as UserRole,
-    username: 'admin',
-    realName: '系统管理员',
-    userId: 1
-  }
-}
+const appName = computed(() => settingsStore.settings.systemName || '问卷调查系统')
+const adminLogo = computed(() => settingsStore.settings.adminLogo || '')
 
 async function handleLogin() {
   if (!username.value.trim()) {
@@ -75,9 +44,17 @@ async function handleLogin() {
   try {
     loading.value = true
 
-    await new Promise((resolve) => setTimeout(resolve, 400))
+    const response = await localLogin({
+      username: username.value.trim(),
+      password: password.value
+    })
 
-    const userInfo = getMockUserInfo(role.value)
+    if (response.code !== 20000) {
+      alert(response.message || '登录失败')
+      return
+    }
+
+    const userInfo = response.data
     authStore.setAuth(userInfo)
     appendOperationLog({
       module: 'SYSTEM',
@@ -85,10 +62,38 @@ async function handleLogin() {
       target: `后台登录（${userInfo.role}）`
     })
 
-    alert('登录成功')
-    router.push(getPostLoginPath(userInfo.role, route.query.redirect))
-  } catch (error) {
-    alert('登录失败')
+    await router.replace(getPostLoginPath(userInfo.role, route.query.redirect))
+  } catch (error: unknown) {
+    const isNetworkError =
+      !!error &&
+      typeof error === 'object' &&
+      (('code' in error && (error as { code?: string }).code === 'ERR_NETWORK') ||
+        ('message' in error &&
+          (error as { message?: string }).message === 'Network Error'))
+
+    const isProxy500WhenBackendDown =
+      !!error &&
+      typeof error === 'object' &&
+      'response' in error &&
+      (error as { response?: { status?: number; data?: unknown } }).response
+        ?.status === 500 &&
+      ((!((error as { response?: { data?: unknown } }).response?.data) &&
+        'message' in error &&
+        (error as { message?: string }).message?.includes('status code 500')) ||
+        (typeof (
+          (error as { response?: { data?: unknown } }).response?.data
+        ) === 'string' &&
+          !(
+            (error as { response?: { data?: string } }).response?.data || ''
+          ).trim()))
+
+    const message = isNetworkError || isProxy500WhenBackendDown
+      ? '无法连接后端服务，请确认后端已启动（http://127.0.0.1:8080）。'
+      : error instanceof Error
+        ? error.message
+        : '登录失败'
+
+    alert(message)
   } finally {
     loading.value = false
   }
@@ -115,72 +120,212 @@ function handleThirdPartyLogin() {
 </script>
 
 <template>
-  <div
-    style="
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #f5f7fa;
-      padding: 16px;
-    "
-  >
-    <div
-      style="
-        width: 100%;
-        max-width: 420px;
-        background: #fff;
-        border-radius: 16px;
-        padding: 32px 24px;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.08);
-      "
-    >
-      <h1 style="margin: 0 0 24px; text-align: center;">后台登录</h1>
-
-      <div style="margin-bottom: 16px;">
-        <div style="margin-bottom: 8px; font-weight: 600;">用户名</div>
-        <el-input v-model="username" placeholder="请输入用户名" />
+  <div class="login-page">
+    <div class="login-card">
+      <div class="brand-block">
+        <div class="brand-logo-wrap">
+          <img v-if="adminLogo" :src="adminLogo" alt="系统 Logo" class="brand-logo">
+          <span v-else class="brand-logo-fallback">LOGO</span>
+        </div>
+        <h1 class="brand-title">{{ appName }}</h1>
+        <p class="brand-subtitle">系统登录</p>
       </div>
 
-      <div style="margin-bottom: 16px;">
-        <div style="margin-bottom: 8px; font-weight: 600;">密码</div>
-        <el-input
-          v-model="password"
-          type="password"
-          show-password
-          placeholder="请输入密码"
-        />
-      </div>
+      <div class="form-block">
+        <div class="form-field">
+          <label class="field-label">用户名</label>
+          <el-input v-model="username" placeholder="请输入用户名" />
+        </div>
 
-      <div style="margin-bottom: 24px;">
-        <div style="margin-bottom: 8px; font-weight: 600;">模拟角色</div>
-        <el-select v-model="role" style="width: 100%;">
-          <el-option label="普通用户 ROLE1" value="ROLE1" />
-          <el-option label="业务管理员 ROLE2" value="ROLE2" />
-          <el-option label="系统管理员 ROLE3" value="ROLE3" />
-        </el-select>
-      </div>
+        <div class="form-field">
+          <label class="field-label">密码</label>
+          <el-input
+            v-model="password"
+            type="password"
+            show-password
+            placeholder="请输入密码"
+          />
+        </div>
 
-      <el-button
-        type="primary"
-        :loading="loading"
-        style="width: 100%;"
-        @click="handleLogin"
-      >
-        登录
-      </el-button>
+        <div v-if="!isRealApi" class="mock-tip">
+          mock 账号：`admin` / `teacher01` / `student01`，密码统一 `123456`
+        </div>
 
-      <div style="margin-top: 14px; text-align: center;">
         <el-button
-          link
           type="primary"
-          :loading="oauthLoading"
-          :disabled="!canUseThirdPartyLogin || loading"
-          @click="handleThirdPartyLogin"
+          :loading="loading"
+          class="submit-btn"
+          @click="handleLogin"
         >
-          使用{{ defaultProviderName }}登录
+          登录
         </el-button>
+
+        <div v-if="canUseThirdPartyLogin" class="oauth-section">
+          <div class="oauth-divider">
+            <span>或</span>
+          </div>
+          <el-button
+            class="oauth-btn"
+            :loading="oauthLoading"
+            :disabled="loading"
+            @click="handleThirdPartyLogin"
+          >
+            使用统一身份认证登录
+          </el-button>
+        </div>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.login-page {
+  min-height: 100vh;
+  padding: 24px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(29, 126, 255, 0.12), transparent 45%),
+    radial-gradient(circle at 80% 0%, rgba(16, 185, 129, 0.1), transparent 40%),
+    #f3f6fb;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 440px;
+  border-radius: 18px;
+  border: 1px solid #e3ebf7;
+  box-shadow: 0 18px 40px rgba(15, 52, 98, 0.12);
+  background: linear-gradient(180deg, #ffffff 0%, #fdfefe 100%);
+  overflow: hidden;
+}
+
+.brand-block {
+  padding: 24px 24px 18px;
+  text-align: center;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  border-bottom: 1px solid #eef3fb;
+}
+
+.brand-logo-wrap {
+  height: 46px;
+  border-radius: 10px;
+  border: 1px solid #dce7f5;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.brand-logo {
+  max-width: 100%;
+  max-height: 36px;
+  object-fit: contain;
+}
+
+.brand-logo-fallback {
+  color: #97a7bf;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+.brand-title {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.3;
+  color: #0f2850;
+}
+
+.brand-subtitle {
+  margin: 6px 0 0;
+  color: #5e718d;
+  font-size: 14px;
+}
+
+.form-block {
+  padding: 22px 24px 24px;
+}
+
+.form-field {
+  margin-bottom: 14px;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 7px;
+  color: #1f2f46;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.mock-tip {
+  margin: 4px 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f6f8fc;
+  border: 1px dashed #d8e0ee;
+  color: #5f6f86;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.submit-btn {
+  width: 100%;
+  height: 40px;
+}
+
+.oauth-section {
+  margin-top: 14px;
+}
+
+.oauth-divider {
+  position: relative;
+  text-align: center;
+  color: #9aa8bd;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.oauth-divider::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px solid #e2eaf6;
+  transform: translateY(-50%);
+}
+
+.oauth-divider span {
+  position: relative;
+  padding: 0 10px;
+  background: #fff;
+}
+
+.oauth-btn {
+  width: 100%;
+  height: 38px;
+  border-color: #bdd6ff;
+  color: #1b66d6;
+  background: #f4f9ff;
+}
+
+.oauth-btn:hover {
+  color: #1553af;
+  border-color: #a6c8ff;
+  background: #eaf3ff;
+}
+
+@media (max-width: 520px) {
+  .brand-block {
+    padding: 20px 18px 14px;
+  }
+
+  .form-block {
+    padding: 18px;
+  }
+}
+</style>

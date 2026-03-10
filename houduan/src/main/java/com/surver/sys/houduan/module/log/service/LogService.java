@@ -3,6 +3,7 @@ package com.surver.sys.houduan.module.log.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.surver.sys.houduan.module.log.dto.CreateLogRequest;
 import com.surver.sys.houduan.module.log.dto.LogItemResponse;
+import org.springframework.context.annotation.Profile;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -14,7 +15,8 @@ import java.util.List;
 import java.util.Map;
 
 @Service
-public class LogService {
+@Profile("!nodeps")
+public class LogService implements LogServiceApi {
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 

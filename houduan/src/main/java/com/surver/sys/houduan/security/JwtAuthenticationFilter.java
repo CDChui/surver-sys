@@ -26,11 +26,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final JwtTokenService jwtTokenService;
-    private final TokenBlacklistService tokenBlacklistService;
+    private final TokenBlacklistServiceApi tokenBlacklistService;
     private final ObjectMapper objectMapper;
 
     public JwtAuthenticationFilter(JwtTokenService jwtTokenService,
-                                   TokenBlacklistService tokenBlacklistService,
+                                   TokenBlacklistServiceApi tokenBlacklistService,
                                    ObjectMapper objectMapper) {
         this.jwtTokenService = jwtTokenService;
         this.tokenBlacklistService = tokenBlacklistService;

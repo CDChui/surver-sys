@@ -6,11 +6,11 @@ import com.surver.sys.houduan.exception.BizException;
 import com.surver.sys.houduan.module.auth.dto.LocalLoginRequest;
 import com.surver.sys.houduan.module.auth.dto.LoginResponse;
 import com.surver.sys.houduan.module.auth.dto.OauthCallbackRequest;
-import com.surver.sys.houduan.module.log.service.LogService;
+import com.surver.sys.houduan.module.log.service.LogServiceApi;
 import com.surver.sys.houduan.module.user.model.UserModel;
-import com.surver.sys.houduan.module.user.service.UserService;
+import com.surver.sys.houduan.module.user.service.UserServiceApi;
 import com.surver.sys.houduan.security.JwtTokenService;
-import com.surver.sys.houduan.security.TokenBlacklistService;
+import com.surver.sys.houduan.security.TokenBlacklistServiceApi;
 import com.surver.sys.houduan.security.UserPrincipal;
 import org.springframework.stereotype.Service;
 
@@ -19,17 +19,17 @@ import java.util.UUID;
 @Service
 public class AuthService {
 
-    private final UserService userService;
+    private final UserServiceApi userService;
     private final JwtTokenService jwtTokenService;
-    private final TokenBlacklistService tokenBlacklistService;
+    private final TokenBlacklistServiceApi tokenBlacklistService;
     private final SsoMockProperties ssoMockProperties;
-    private final LogService logService;
+    private final LogServiceApi logService;
 
-    public AuthService(UserService userService,
+    public AuthService(UserServiceApi userService,
                        JwtTokenService jwtTokenService,
-                       TokenBlacklistService tokenBlacklistService,
+                       TokenBlacklistServiceApi tokenBlacklistService,
                        SsoMockProperties ssoMockProperties,
-                       LogService logService) {
+                       LogServiceApi logService) {
         this.userService = userService;
         this.jwtTokenService = jwtTokenService;
         this.tokenBlacklistService = tokenBlacklistService;
@@ -45,7 +45,7 @@ public class AuthService {
                 .orElseThrow(() -> new BizException(ErrorCode.NOT_FOUND, "用户不存在"));
         String token = jwtTokenService.generateToken(toPrincipal(user));
         logService.appendSystemLog(user.getUsername(), "SYSTEM", "LOGIN", "后台本地登录");
-        return new LoginResponse(token, user.getRole(), user.getUsername(), user.getRealName(), user.getId());
+        return new LoginResponse(token, user.getRole(), user.getUsername(), user.getRealName(), user.getId(), true);
     }
 
     public LoginResponse oauthCallback(OauthCallbackRequest request) {
@@ -66,7 +66,7 @@ public class AuthService {
                 UUID.randomUUID().toString()
         ));
         logService.appendSystemLog(user.getUsername(), "SYSTEM", "LOGIN", "第三方登录: " + request.providerId());
-        return new LoginResponse(token, user.getRole(), user.getUsername(), user.getRealName(), user.getId());
+        return new LoginResponse(token, user.getRole(), user.getUsername(), user.getRealName(), user.getId(), false);
     }
 
     public void logout(String token) {

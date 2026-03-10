@@ -23,6 +23,7 @@ export interface SurveyItem {
   status: SurveyStatus
   createdAt: string
   creatorId: number
+  allowDuplicateSubmit: boolean
   schema: QuestionItem[]
 }
 
@@ -37,6 +38,7 @@ function getDefaultSurveyMap(): Record<number, SurveyItem> {
     status: 'DRAFT',
     createdAt: '2026-03-08 09:00:00',
     creatorId: 1,
+    allowDuplicateSubmit: false,
     schema: [
       {
         id: 1,
@@ -155,6 +157,7 @@ export const useSurveyStore = defineStore('survey', {
       description: string
       schema: QuestionItem[]
       creatorId: number
+      allowDuplicateSubmit?: boolean
     }) {
       this.surveyMap[payload.id] = {
         id: payload.id,
@@ -163,6 +166,7 @@ export const useSurveyStore = defineStore('survey', {
         status: 'DRAFT',
         createdAt: new Date().toLocaleString('zh-CN', { hour12: false }),
         creatorId: payload.creatorId,
+        allowDuplicateSubmit: Boolean(payload.allowDuplicateSubmit),
         schema: payload.schema
       }
 
@@ -174,6 +178,7 @@ export const useSurveyStore = defineStore('survey', {
       title: string
       description: string
       schema: QuestionItem[]
+      allowDuplicateSubmit?: boolean
     }) {
       const target = this.surveyMap[payload.id]
       if (!target) return
@@ -182,6 +187,7 @@ export const useSurveyStore = defineStore('survey', {
         ...target,
         title: payload.title,
         description: payload.description,
+        allowDuplicateSubmit: Boolean(payload.allowDuplicateSubmit),
         schema: payload.schema
       }
 

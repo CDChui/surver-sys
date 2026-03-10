@@ -1,12 +1,15 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import {
+  closeSurveyApi,
   createSurveyDraft,
+  deleteSurveyApi,
   exportSurveyStatsExcel,
   getSurveyDetail,
   getSurveyList,
+  publishSurveyApi,
   type QuestionSchemaItem,
   type SurveyListItemResult
 } from '../../api/survey'
@@ -130,8 +133,13 @@ function handleAuth(row: SurveyItem) {
   router.push(`/admin/surveys/${row.id}/auth`)
 }
 
-function handleOpenMobile(row: SurveyItem) {
-  router.push(`/m/surveys/${row.id}`)
+function handlePreviewSurvey(row: SurveyItem) {
+  router.push({
+    path: `/m/surveys/${row.id}`,
+    query: {
+      previewMode: '1'
+    }
+  })
 }
 
 function handleStats(row: SurveyItem) {
@@ -139,7 +147,7 @@ function handleStats(row: SurveyItem) {
 }
 
 function getSurveyLinkBase() {
-  const domain = settingsStore.settings.systemDomain.trim()
+  const domain = settingsStore.settings.systemDomain.trim().replace(/\/+$/, '')
   const fallback = window.location.origin
 
   if (!domain) {
@@ -150,7 +158,13 @@ function getSurveyLinkBase() {
     return domain
   }
 
-  return `https://${domain}`
+  const protocol = window.location.protocol || 'https:'
+
+  try {
+    return new URL(`${protocol}//${domain}`).toString().replace(/\/+$/, '')
+  } catch (error) {
+    return fallback
+  }
 }
 
 function buildSurveyLink(id: number) {
@@ -191,7 +205,8 @@ async function handleDuplicate(row: SurveyItem) {
     const createResponse = await createSurveyDraft({
       title: `${source.title}（副本）`,
       description: source.description,
-      questions: cloneQuestions(source.schema)
+      questions: cloneQuestions(source.schema),
+      allowDuplicateSubmit: Boolean(source.allowDuplicateSubmit)
     })
 
     if (createResponse.code !== 20000) {
@@ -205,7 +220,8 @@ async function handleDuplicate(row: SurveyItem) {
       title: created.title,
       description: created.description,
       schema: created.schema,
-      creatorId: created.creatorId
+      creatorId: created.creatorId,
+      allowDuplicateSubmit: Boolean(created.allowDuplicateSubmit)
     })
 
     appendOperationLog({
@@ -247,49 +263,64 @@ async function handleExport(row: SurveyItem) {
   }
 }
 
-function handlePublish(row: SurveyItem) {
+async function handlePublish(row: SurveyItem) {
   if (row.status === 'PUBLISHED') {
-    alert('该问卷已经是已发布状态')
+    alert('该问卷已是发布状态')
     return
   }
 
-  surveyStore.publishSurvey(row.id)
+  const response = await publishSurveyApi(row.id)
+  if (response.code !== 20000) {
+    alert(response.message || '发布失败')
+    return
+  }
+
   appendOperationLog({
     module: 'SURVEY',
     action: 'PUBLISH',
     target: row.title
   })
-  void loadSurveyList()
+  await loadSurveyList()
   alert(`已发布：${row.title}`)
 }
 
-function handleClose(row: SurveyItem) {
+async function handleClose(row: SurveyItem) {
   if (row.status === 'CLOSED') {
-    alert('该问卷已经是已关闭状态')
+    alert('该问卷已是关闭状态')
     return
   }
 
-  surveyStore.closeSurvey(row.id)
+  const response = await closeSurveyApi(row.id)
+  if (response.code !== 20000) {
+    alert(response.message || '关闭失败')
+    return
+  }
+
   appendOperationLog({
     module: 'SURVEY',
     action: 'CLOSE',
     target: row.title
   })
-  void loadSurveyList()
+  await loadSurveyList()
   alert(`已关闭：${row.title}`)
 }
 
-function handleDelete(row: SurveyItem) {
+async function handleDelete(row: SurveyItem) {
   const ok = window.confirm(`确定删除《${row.title}》吗？`)
   if (!ok) return
 
-  surveyStore.deleteSurvey(row.id)
+  const response = await deleteSurveyApi(row.id)
+  if (response.code !== 20000) {
+    alert(response.message || '删除失败')
+    return
+  }
+
   appendOperationLog({
     module: 'SURVEY',
     action: 'DELETE',
     target: row.title
   })
-  void loadSurveyList()
+  await loadSurveyList()
   alert(`已删除：${row.title}`)
 }
 
@@ -401,8 +432,8 @@ onMounted(() => {
               授权
             </el-button>
 
-            <el-button size="small" type="primary" @click="handleOpenMobile(scope.row)">
-              访问问卷
+            <el-button size="small" type="primary" @click="handlePreviewSurvey(scope.row)">
+              问卷预览
             </el-button>
 
             <el-button size="small" @click="handleShowSurveyLink(scope.row)">
@@ -476,3 +507,8 @@ onMounted(() => {
     </el-dialog>
   </div>
 </template>
+
+
+
+
+

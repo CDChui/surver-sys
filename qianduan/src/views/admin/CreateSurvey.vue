@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
@@ -17,6 +17,7 @@ const loading = ref(false)
 const form = reactive({
   title: '',
   description: '',
+  allowDuplicateSubmit: false,
   questions: [] as QuestionSchemaItem[]
 })
 
@@ -25,6 +26,7 @@ const schemaPreview = computed(() => {
     {
       title: form.title,
       description: form.description,
+      allowDuplicateSubmit: form.allowDuplicateSubmit,
       questions: form.questions
     },
     null,
@@ -44,8 +46,14 @@ async function handleSaveDraft() {
     const response = await createSurveyDraft({
       title: form.title,
       description: form.description,
-      questions: form.questions
+      questions: form.questions,
+      allowDuplicateSubmit: form.allowDuplicateSubmit
     })
+
+    if (response.code !== 20000 || !response.data) {
+      alert(response.message || '保存草稿失败')
+      return
+    }
 
     const result = response.data
 
@@ -54,7 +62,8 @@ async function handleSaveDraft() {
       title: result.title,
       description: result.description,
       schema: result.schema,
-      creatorId: result.creatorId
+      creatorId: result.creatorId,
+      allowDuplicateSubmit: Boolean(result.allowDuplicateSubmit)
     })
 
     appendOperationLog({
@@ -67,7 +76,7 @@ async function handleSaveDraft() {
       `草稿已保存，问卷ID：${result.id}，题目数：${result.schema.length}`
     )
 
-    router.push('/admin')
+    router.push('/admin/surveys')
   } catch (error) {
     alert('保存草稿失败')
   } finally {
@@ -165,7 +174,7 @@ function getQuestionTypeText(type: QuestionType) {
 }
 
 function handleBack() {
-  router.push('/admin')
+  router.push('/admin/surveys')
 }
 </script>
 
@@ -179,9 +188,16 @@ function handleBack() {
             <p style="margin: 8px 0 0; color: #666;">先填写基础信息，再添加题目</p>
           </div>
 
-          <el-button @click="handleBack">
-            返回列表
-          </el-button>
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <el-switch v-model="form.allowDuplicateSubmit" />
+              <span style="font-weight: 600; color: #333;">允许重复提交</span>
+            </div>
+
+            <el-button @click="handleBack">
+              返回列表
+            </el-button>
+          </div>
         </div>
       </template>
 
@@ -324,3 +340,4 @@ function handleBack() {
     </el-card>
   </div>
 </template>
+

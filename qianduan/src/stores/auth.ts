@@ -8,6 +8,7 @@ interface AuthState {
   username: string
   realName: string
   userId: number | null
+  localAccount: boolean
 }
 
 const TOKEN_KEY = 'AUTH_TOKEN'
@@ -15,6 +16,7 @@ const ROLE_KEY = 'AUTH_ROLE'
 const USERNAME_KEY = 'AUTH_USERNAME'
 const REALNAME_KEY = 'AUTH_REALNAME'
 const USER_ID_KEY = 'AUTH_USER_ID'
+const LOCAL_ACCOUNT_KEY = 'AUTH_LOCAL_ACCOUNT'
 
 export const useAuthStore = defineStore('auth', {
   state: (): AuthState => ({
@@ -24,7 +26,8 @@ export const useAuthStore = defineStore('auth', {
     realName: localStorage.getItem(REALNAME_KEY) || '',
     userId: localStorage.getItem(USER_ID_KEY)
       ? Number(localStorage.getItem(USER_ID_KEY))
-      : null
+      : null,
+    localAccount: localStorage.getItem(LOCAL_ACCOUNT_KEY) === 'true'
   }),
 
   getters: {
@@ -41,18 +44,21 @@ export const useAuthStore = defineStore('auth', {
       username: string
       realName: string
       userId: number
+      localAccount: boolean
     }) {
       this.token = payload.token
       this.role = payload.role
       this.username = payload.username
       this.realName = payload.realName
       this.userId = payload.userId
+      this.localAccount = payload.localAccount
 
       localStorage.setItem(TOKEN_KEY, payload.token)
       localStorage.setItem(ROLE_KEY, payload.role)
       localStorage.setItem(USERNAME_KEY, payload.username)
       localStorage.setItem(REALNAME_KEY, payload.realName)
       localStorage.setItem(USER_ID_KEY, String(payload.userId))
+      localStorage.setItem(LOCAL_ACCOUNT_KEY, String(payload.localAccount))
     },
 
     clearToken() {
@@ -61,12 +67,14 @@ export const useAuthStore = defineStore('auth', {
       this.username = ''
       this.realName = ''
       this.userId = null
+      this.localAccount = false
 
       localStorage.removeItem(TOKEN_KEY)
       localStorage.removeItem(ROLE_KEY)
       localStorage.removeItem(USERNAME_KEY)
       localStorage.removeItem(REALNAME_KEY)
       localStorage.removeItem(USER_ID_KEY)
+      localStorage.removeItem(LOCAL_ACCOUNT_KEY)
     }
   }
 })

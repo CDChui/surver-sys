@@ -1,14 +1,17 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
+import { logoutApi } from '../../api/auth'
 import { useSettingsStore } from '../../stores/settings'
 import { appendOperationLog } from '../../utils/log'
+import { setLogoutContext } from '../../utils/logout-context'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
+const adminLogo = computed(() => settingsStore.settings.adminLogo || '')
 
 const pageTitle = computed(() => {
   const path = route.path
@@ -21,6 +24,7 @@ const pageTitle = computed(() => {
   if (path.includes('/admin/permissions')) return '授权管理'
   if (path.includes('/admin/logs')) return '日志中心'
   if (path.includes('/admin/settings')) return '系统设置'
+  if (path.includes('/admin/password')) return '修改密码'
   return '问卷管理'
 })
 
@@ -48,14 +52,33 @@ function goSettings() {
   router.push('/admin/settings')
 }
 
-function handleLogout() {
+function goChangePassword() {
+  router.push('/admin/password')
+}
+
+async function handleLogout() {
+  const currentRole = authStore.role
+  setLogoutContext('admin', currentRole)
+
+  try {
+    await logoutApi()
+  } catch (error) {
+    // keep local logout flow even when server logout fails
+  }
+
   appendOperationLog({
     module: 'SYSTEM',
     action: 'LOGOUT',
     target: '后台退出登录'
   })
   authStore.clearToken()
-  router.push('/auth/logout')
+  router.push({
+    path: '/auth/logout',
+    query: {
+      role: currentRole,
+      entry: 'admin'
+    }
+  })
 }
 </script>
 
@@ -73,13 +96,37 @@ function handleLogout() {
       <div
         style="
           padding: 0 20px 20px;
-          font-size: 20px;
-          font-weight: 700;
           border-bottom: 1px solid rgba(255,255,255,0.08);
           margin-bottom: 16px;
         "
       >
-        {{ settingsStore.settings.systemName }}
+        <div
+          style="
+            height: 44px;
+            border-radius: 8px;
+            background: #ffffff;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border: 1px solid #dbe3ef;
+          "
+        >
+          <img
+            v-if="adminLogo"
+            :src="adminLogo"
+            alt="管理后台 Logo"
+            style="max-width: 100%; max-height: 36px; object-fit: contain;"
+          >
+          <span v-else style="font-size: 12px; color: #8b95a3; letter-spacing: 0.5px;">
+            LOGO
+          </span>
+        </div>
+
+        <div style="font-size: 20px; font-weight: 700;">
+          {{ settingsStore.settings.systemName }}
+        </div>
       </div>
 
       <div style="padding: 0 12px;">
@@ -181,7 +228,17 @@ function handleLogout() {
         </div>
 
         <div style="display: flex; align-items: center; gap: 12px;">
-          <span style="color: #666;">管理员</span>
+          <span style="color: #666;">{{ authStore.realName || authStore.username || '管理员' }}</span>
+
+          <el-button
+            v-if="authStore.localAccount"
+            plain
+            size="small"
+            @click="goChangePassword"
+          >
+            修改密码
+          </el-button>
+
           <el-button type="danger" plain size="small" @click="handleLogout">
             退出登录
           </el-button>

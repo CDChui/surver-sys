@@ -7,8 +7,9 @@ import java.util.List;
 import java.util.Map;
 
 public record CreateSurveyRequest(
-        @NotBlank(message = "title 不能为空") String title,
+        @NotBlank(message = "title cannot be blank") String title,
         String description,
-        @NotNull(message = "questions 不能为空") List<Map<String, Object>> questions
+        @NotNull(message = "questions cannot be null") List<Map<String, Object>> questions,
+        Boolean allowDuplicateSubmit
 ) {
 }

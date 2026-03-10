@@ -7,6 +7,8 @@ import com.surver.sys.houduan.module.user.dto.CreateUserRequest;
 import com.surver.sys.houduan.module.user.dto.UpdateUserRequest;
 import com.surver.sys.houduan.module.user.dto.UserItemResponse;
 import com.surver.sys.houduan.module.user.model.UserModel;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.annotation.Profile;
 import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -14,16 +16,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
 
+import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.time.format.DateTimeFormatter;
 
 @Service
-public class UserService {
+@Profile("!nodeps")
+public class UserService implements UserServiceApi {
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -36,10 +38,12 @@ public class UserService {
         model.setId(rs.getLong("id"));
         model.setUsername(rs.getString("uid"));
         model.setRealName(rs.getString("display_name"));
+        model.setRemark(rs.getString("remark"));
         model.setRole(rs.getString("role"));
         model.setStatus(rs.getInt("status") == 1 ? "ENABLED" : "DISABLED");
         model.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime().format(DATE_TIME_FORMATTER));
         model.setLocalAccount(rs.getInt("is_local") == 1);
+        model.setPasswordHash(rs.getString("password_hash"));
         return model;
     };
 
@@ -58,19 +62,21 @@ public class UserService {
             return;
         }
         jdbcTemplate.update("""
-                INSERT INTO sys_user (uid, login_name, display_name, password_hash, is_local, role, status)
-                VALUES (?, ?, ?, ?, 1, 'ROLE3', 1)
+                INSERT INTO sys_user (uid, login_name, display_name, remark, password_hash, is_local, role, status)
+                VALUES (?, ?, ?, ?, ?, 1, 'ROLE3', 1)
                 """,
                 adminInitProperties.getUsername(),
                 adminInitProperties.getUsername(),
-                "系统管理员",
+                "System Admin",
+                "",
                 passwordEncoder.encode(adminInitProperties.getPassword())
         );
     }
 
+    @Override
     public List<UserItemResponse> listUsers() {
         List<UserModel> users = jdbcTemplate.query("""
-                SELECT id, uid, display_name, role, status, created_at, is_local
+                SELECT id, uid, display_name, remark, role, status, created_at, is_local, password_hash
                 FROM sys_user
                 ORDER BY id ASC
                 """, userMapper);
@@ -80,76 +86,150 @@ public class UserService {
                 .toList();
     }
 
+    @Override
     public UserItemResponse createUser(CreateUserRequest request) {
         String normalizedUsername = normalize(request.username());
+        String normalizedRealName = normalize(request.realName());
+        String normalizedRemark = normalize(request.remark());
+        String normalizedPassword = normalize(request.initialPassword());
+
         ensureUsernameNotExists(normalizedUsername);
+        ensureValidPassword(normalizedPassword);
+
         jdbcTemplate.update("""
-                INSERT INTO sys_user (uid, login_name, display_name, password_hash, is_local, role, status)
-                VALUES (?, ?, ?, NULL, 0, ?, ?)
+                INSERT INTO sys_user (uid, login_name, display_name, remark, password_hash, is_local, role, status)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?)
                 """,
                 normalizedUsername,
                 normalizedUsername,
-                normalize(request.realName()),
+                normalizedRealName,
+                normalizedRemark,
+                passwordEncoder.encode(normalizedPassword),
                 normalize(request.role()).toUpperCase(Locale.ROOT),
                 toStatusFlag(request.status())
         );
-        return toResponse(findByUsername(normalizedUsername)
-                .orElseThrow(() -> new BizException(ErrorCode.SERVER_ERROR, "用户创建失败")));
+        return toResponse(findLocalUserByUsername(normalizedUsername)
+                .orElseThrow(() -> new BizException(ErrorCode.SERVER_ERROR, "Failed to create user")));
     }
 
+    @Override
     public UserItemResponse updateUser(Long id, UpdateUserRequest request) {
+        UserModel model = getById(id);
+        String nextRealName = normalize(request.realName());
+        String nextRemark = normalize(request.remark());
+        if (!model.isLocalAccount() && !nextRealName.equals(model.getRealName())) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "Third-party user's real name cannot be modified");
+        }
+
+        String persistedRealName = model.isLocalAccount() ? nextRealName : model.getRealName();
         int updated = jdbcTemplate.update("""
                 UPDATE sys_user
-                SET display_name = ?, role = ?, status = ?
+                SET display_name = ?, remark = ?, role = ?, status = ?
                 WHERE id = ?
                 """,
-                normalize(request.realName()),
+                persistedRealName,
+                nextRemark,
                 normalize(request.role()).toUpperCase(Locale.ROOT),
                 toStatusFlag(request.status()),
                 id
         );
         if (updated == 0) {
-            throw new BizException(ErrorCode.NOT_FOUND, "用户不存在");
+            throw new BizException(ErrorCode.NOT_FOUND, "User not found");
         }
         return toResponse(getById(id));
     }
 
+    @Override
     public void deleteUser(Long id) {
         UserModel model = getById(id);
         if ("ROLE3".equals(model.getRole())) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "系统管理员不允许删除");
+            throw new BizException(ErrorCode.INVALID_PARAM, "System administrator cannot be deleted");
         }
         try {
             int deleted = jdbcTemplate.update("DELETE FROM sys_user WHERE id = ?", id);
             if (deleted == 0) {
-                throw new BizException(ErrorCode.NOT_FOUND, "用户不存在");
+                throw new BizException(ErrorCode.NOT_FOUND, "User not found");
             }
         } catch (DataIntegrityViolationException e) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "该用户已被业务数据引用，无法删除");
+            throw new BizException(ErrorCode.INVALID_PARAM, "User is referenced by business data and cannot be deleted");
         }
     }
 
+    @Override
     public void updateRole(Long id, String role) {
         int updated = jdbcTemplate.update("UPDATE sys_user SET role = ? WHERE id = ?",
                 normalize(role).toUpperCase(Locale.ROOT), id);
         if (updated == 0) {
-            throw new BizException(ErrorCode.NOT_FOUND, "用户不存在");
+            throw new BizException(ErrorCode.NOT_FOUND, "User not found");
         }
     }
 
+    @Override
     public void updateStatus(Long id, String status) {
         int updated = jdbcTemplate.update("UPDATE sys_user SET status = ? WHERE id = ?",
                 toStatusFlag(status), id);
         if (updated == 0) {
-            throw new BizException(ErrorCode.NOT_FOUND, "用户不存在");
+            throw new BizException(ErrorCode.NOT_FOUND, "User not found");
         }
     }
 
+    @Override
+    public void resetLocalUserPassword(Long id, String newPassword) {
+        UserModel model = getById(id);
+        if (!model.isLocalAccount()) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "Only local users support password reset");
+        }
+
+        String normalized = normalize(newPassword);
+        ensureValidPassword(normalized);
+
+        int updated = jdbcTemplate.update("""
+                UPDATE sys_user
+                SET password_hash = ?
+                WHERE id = ? AND is_local = 1
+                """, passwordEncoder.encode(normalized), id);
+
+        if (updated == 0) {
+            throw new BizException(ErrorCode.NOT_FOUND, "User not found");
+        }
+    }
+
+    @Override
+    public void changeOwnLocalPassword(Long userId, String oldPassword, String newPassword) {
+        UserModel model = getById(userId);
+        if (!model.isLocalAccount()) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "Current account is not a local account");
+        }
+
+        String oldNormalized = normalize(oldPassword);
+        String newNormalized = normalize(newPassword);
+        ensureValidPassword(newNormalized);
+
+        if (oldNormalized.isEmpty()) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "Old password is required");
+        }
+        if (oldNormalized.equals(newNormalized)) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "New password must be different from old password");
+        }
+
+        String passwordHash = model.getPasswordHash();
+        if (passwordHash == null || passwordHash.isBlank() || !passwordEncoder.matches(oldNormalized, passwordHash)) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "Old password is incorrect");
+        }
+
+        jdbcTemplate.update("""
+                UPDATE sys_user
+                SET password_hash = ?
+                WHERE id = ? AND is_local = 1
+                """, passwordEncoder.encode(newNormalized), userId);
+    }
+
+    @Override
     public Optional<UserModel> findByUsername(String username) {
         String normalized = normalize(username);
         try {
             UserModel model = jdbcTemplate.queryForObject("""
-                    SELECT id, uid, display_name, role, status, created_at, is_local
+                    SELECT id, uid, display_name, remark, role, status, created_at, is_local, password_hash
                     FROM sys_user
                     WHERE uid = ?
                     ORDER BY id ASC
@@ -161,40 +241,50 @@ public class UserService {
         }
     }
 
+    @Override
     public UserModel getById(Long id) {
         try {
             return jdbcTemplate.queryForObject("""
-                    SELECT id, uid, display_name, role, status, created_at, is_local
+                    SELECT id, uid, display_name, remark, role, status, created_at, is_local, password_hash
                     FROM sys_user
                     WHERE id = ?
                     """, userMapper, id);
         } catch (EmptyResultDataAccessException e) {
-            throw new BizException(ErrorCode.NOT_FOUND, "用户不存在");
+            throw new BizException(ErrorCode.NOT_FOUND, "User not found");
         }
     }
 
+    @Override
     public boolean verifyLocalPassword(String username, String password) {
         String normalized = normalize(username);
+        String normalizedPassword = normalize(password);
+        if (normalizedPassword.isEmpty()) {
+            return false;
+        }
+
         try {
             String passwordHash = jdbcTemplate.queryForObject("""
                     SELECT password_hash
                     FROM sys_user
                     WHERE uid = ? AND is_local = 1 AND status = 1
+                    ORDER BY id ASC
                     LIMIT 1
                     """, String.class, normalized);
-            return passwordHash != null && passwordEncoder.matches(password, passwordHash);
+            return passwordHash != null && passwordEncoder.matches(normalizedPassword, passwordHash);
         } catch (EmptyResultDataAccessException e) {
             return false;
         }
     }
 
+    @Override
     public Optional<UserModel> findLocalUserByUsername(String username) {
         String normalized = normalize(username);
         try {
             UserModel model = jdbcTemplate.queryForObject("""
-                    SELECT id, uid, display_name, role, status, created_at, is_local
+                    SELECT id, uid, display_name, remark, role, status, created_at, is_local, password_hash
                     FROM sys_user
                     WHERE uid = ? AND is_local = 1
+                    ORDER BY id ASC
                     LIMIT 1
                     """, userMapper, normalized);
             return Optional.ofNullable(model);
@@ -203,10 +293,12 @@ public class UserService {
         }
     }
 
+    @Override
     public UserModel findOrCreateOauthUser(String username, String realName, String role) {
-        Optional<UserModel> existed = findByUsername(username);
-        if (existed.isPresent()) {
-            UserModel model = existed.get();
+        String normalizedUsername = normalize(username);
+        Optional<UserModel> existedOauthUser = findOauthUserByUsername(normalizedUsername);
+        if (existedOauthUser.isPresent()) {
+            UserModel model = existedOauthUser.get();
             jdbcTemplate.update("""
                     UPDATE sys_user
                     SET display_name = ?, role = ?, status = 1, is_local = 0
@@ -214,21 +306,44 @@ public class UserService {
                     """, normalize(realName), normalize(role).toUpperCase(Locale.ROOT), model.getId());
             return getById(model.getId());
         }
+
         jdbcTemplate.update("""
-                INSERT INTO sys_user (uid, login_name, display_name, password_hash, is_local, role, status)
-                VALUES (?, ?, ?, NULL, 0, ?, 1)
+                INSERT INTO sys_user (uid, login_name, display_name, remark, password_hash, is_local, role, status)
+                VALUES (?, ?, ?, ?, NULL, 0, ?, 1)
                 """,
-                normalize(username),
-                normalize(username),
+                normalizedUsername,
+                normalizedUsername,
                 normalize(realName),
+                "",
                 normalize(role).toUpperCase(Locale.ROOT));
-        return findByUsername(username)
-                .orElseThrow(() -> new BizException(ErrorCode.SERVER_ERROR, "第三方用户创建失败"));
+
+        return findOauthUserByUsername(normalizedUsername)
+                .orElseThrow(() -> new BizException(ErrorCode.SERVER_ERROR, "Failed to create oauth user"));
+    }
+
+    private Optional<UserModel> findOauthUserByUsername(String username) {
+        try {
+            UserModel model = jdbcTemplate.queryForObject("""
+                    SELECT id, uid, display_name, remark, role, status, created_at, is_local, password_hash
+                    FROM sys_user
+                    WHERE uid = ? AND is_local = 0
+                    ORDER BY id ASC
+                    LIMIT 1
+                    """, userMapper, username);
+            return Optional.ofNullable(model);
+        } catch (EmptyResultDataAccessException e) {
+            return Optional.empty();
+        }
     }
 
     private void ensureUsernameNotExists(String username) {
-        if (findByUsername(username).isPresent()) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "用户名已存在");
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(1) FROM sys_user WHERE uid = ?",
+                Integer.class,
+                username
+        );
+        if (count != null && count > 0) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "Username already exists");
         }
     }
 
@@ -237,9 +352,11 @@ public class UserService {
                 model.getId(),
                 model.getUsername(),
                 model.getRealName(),
+                model.getRemark(),
                 model.getRole(),
                 model.getStatus(),
-                model.getCreatedAt()
+                model.getCreatedAt(),
+                model.isLocalAccount()
         );
     }
 
@@ -249,5 +366,14 @@ public class UserService {
 
     private static String normalize(String text) {
         return text == null ? "" : text.trim();
+    }
+
+    private static void ensureValidPassword(String password) {
+        if (password == null || password.isBlank()) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "Password cannot be empty");
+        }
+        if (password.length() < 6 || password.length() > 64) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "Password length must be between 6 and 64");
+        }
     }
 }

@@ -3,7 +3,7 @@ package com.surver.sys.houduan.module.log.controller;
 import com.surver.sys.houduan.common.ApiResponse;
 import com.surver.sys.houduan.module.log.dto.CreateLogRequest;
 import com.surver.sys.houduan.module.log.dto.LogItemResponse;
-import com.surver.sys.houduan.module.log.service.LogService;
+import com.surver.sys.houduan.module.log.service.LogServiceApi;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,9 +18,9 @@ import java.util.List;
 @RequestMapping("/api/logs")
 public class LogController {
 
-    private final LogService logService;
+    private final LogServiceApi logService;
 
-    public LogController(LogService logService) {
+    public LogController(LogServiceApi logService) {
         this.logService = logService;
     }
 

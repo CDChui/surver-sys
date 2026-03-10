@@ -53,6 +53,8 @@ export interface SystemSettings {
   enableLog: boolean
   enableResumeDraft: boolean
   allowDuplicateSubmit: boolean
+  adminLogo: string
+  userHomeLogo: string
   oauth: OauthSettings
   authIntegration: AuthIntegrationSettings
 }
@@ -64,6 +66,17 @@ function formatDomainAsUrl(rawDomain: string) {
   if (!domain) return ''
   if (/^https?:\/\//i.test(domain)) return domain
   return `https://${domain}`
+}
+
+function formatSystemDomainAsUrl(rawDomain: string) {
+  const domain = String(rawDomain || '').trim().replace(/\/+$/, '')
+  if (!domain) return ''
+  if (/^https?:\/\//i.test(domain)) return domain
+  const protocol =
+    typeof window !== 'undefined' && window.location?.protocol
+      ? window.location.protocol
+      : 'https:'
+  return `${protocol}//${domain}`
 }
 
 function trimText(value: unknown) {
@@ -79,6 +92,15 @@ function buildIamEndpoints(rawDomain: string) {
     userInfoUrl: baseUrl ? `${baseUrl}/idp/oauth2/getUserInfo` : '',
     refreshUrl: baseUrl ? `${baseUrl}/idp/oauth2/refreshToken` : '',
     revokeUrl: baseUrl ? `${baseUrl}/idp/oauth2/revokeToken` : ''
+  }
+}
+
+function buildIamDefaultUris(rawDomain: string) {
+  const baseUrl = formatSystemDomainAsUrl(rawDomain)
+
+  return {
+    redirectUri: baseUrl ? `${baseUrl}/auth/sso/callback` : '',
+    logoutRedirectUri: baseUrl ? `${baseUrl}/auth/logout` : ''
   }
 }
 
@@ -153,6 +175,8 @@ function getDefaultSettings(): SystemSettings {
     enableLog: true,
     enableResumeDraft: true,
     allowDuplicateSubmit: false,
+    adminLogo: '',
+    userHomeLogo: '',
     oauth: getDefaultOauthSettings(),
     authIntegration: getDefaultAuthIntegration()
   }
@@ -182,9 +206,15 @@ function normalizeRole(value: unknown): UserRole {
   return 'ROLE1'
 }
 
+function normalizeLogoValue(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  return value.trim()
+}
+
 function normalizeProvider(
   providerRaw: unknown,
-  fallbackIndex = 0
+  fallbackIndex = 0,
+  systemDomain = ''
 ): OauthProviderConfig {
   const defaults = getDefaultProvider()
   const candidate = (providerRaw || {}) as Partial<OauthProviderConfig>
@@ -203,6 +233,7 @@ function normalizeProvider(
           refreshUrl: trimText(candidate.refreshUrl),
           revokeUrl: trimText(candidate.revokeUrl)
         }
+  const defaultUris = buildIamDefaultUris(systemDomain)
 
   const normalizedProvider: OauthProviderConfig = {
     ...defaults,
@@ -220,8 +251,14 @@ function normalizeProvider(
     clientId: trimText(candidate.clientId),
     clientSecret: trimText(candidate.clientSecret),
     scope: trimText(candidate.scope),
-    redirectUri: trimText(candidate.redirectUri),
-    logoutRedirectUri: trimText(candidate.logoutRedirectUri),
+    redirectUri:
+      protocol === 'IAM_TEMPLATE'
+        ? trimText(candidate.redirectUri) || defaultUris.redirectUri
+        : trimText(candidate.redirectUri),
+    logoutRedirectUri:
+      protocol === 'IAM_TEMPLATE'
+        ? trimText(candidate.logoutRedirectUri) || defaultUris.logoutRedirectUri
+        : trimText(candidate.logoutRedirectUri),
     authorizeUrl: endpoints.authorizeUrl,
     tokenUrl: endpoints.tokenUrl,
     userInfoUrl: endpoints.userInfoUrl,
@@ -243,7 +280,8 @@ function normalizeProvider(
 }
 
 function migrateLegacyOauthToIntegration(
-  oauthRaw: Partial<OauthSettings> | undefined
+  oauthRaw: Partial<OauthSettings> | undefined,
+  systemDomain = ''
 ): AuthIntegrationSettings {
   const defaults = getDefaultAuthIntegration()
   const provider = normalizeProvider(
@@ -257,7 +295,8 @@ function migrateLegacyOauthToIntegration(
       redirectUri: trimText(oauthRaw?.redirectUri),
       logoutRedirectUri: trimText(oauthRaw?.logoutRedirectUri)
     },
-    0
+    0,
+    systemDomain
   )
 
   return {
@@ -270,17 +309,20 @@ function migrateLegacyOauthToIntegration(
 
 function normalizeAuthIntegration(
   integrationRaw: unknown,
-  legacyOauth: OauthSettings
+  legacyOauth: OauthSettings,
+  systemDomain = ''
 ): AuthIntegrationSettings {
   const defaults = getDefaultAuthIntegration()
   const candidate = (integrationRaw || {}) as Partial<AuthIntegrationSettings>
   const rawProviders = Array.isArray(candidate.providers) ? candidate.providers : []
 
   if (rawProviders.length === 0) {
-    return migrateLegacyOauthToIntegration(legacyOauth)
+    return migrateLegacyOauthToIntegration(legacyOauth, systemDomain)
   }
 
-  const providers = rawProviders.map((item, index) => normalizeProvider(item, index))
+  const providers = rawProviders.map((item, index) =>
+    normalizeProvider(item, index, systemDomain)
+  )
   const providerMap = new Map(providers.map((item) => [item.id, item]))
   const normalizedDefaultProviderId = trimText(candidate.defaultProviderId)
   const fallbackProviderId = providers[0]?.id || defaults.providers[0]?.id || 'iam-default'
@@ -340,14 +382,18 @@ function normalizeSettings(rawSettings: unknown): SystemSettings {
     ...defaults.oauth,
     ...(candidate.oauth || {})
   }
+  const systemDomain = trimText(candidate.systemDomain) || defaults.systemDomain
   const authIntegration = normalizeAuthIntegration(
     candidate.authIntegration,
-    legacyOauth
+    legacyOauth,
+    systemDomain
   )
 
   return {
     ...defaults,
     ...candidate,
+    adminLogo: normalizeLogoValue(candidate.adminLogo),
+    userHomeLogo: normalizeLogoValue(candidate.userHomeLogo),
     oauth: convertAuthIntegrationToLegacyOauth(authIntegration),
     authIntegration
   }

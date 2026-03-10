@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, reactive, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -23,6 +23,7 @@ const surveyId = computed(() => Number(route.params.id))
 const form = reactive({
   title: '',
   description: '',
+  allowDuplicateSubmit: false,
   questions: [] as QuestionSchemaItem[]
 })
 
@@ -32,6 +33,7 @@ const schemaPreview = computed(() => {
       id: surveyId.value,
       title: form.title,
       description: form.description,
+      allowDuplicateSubmit: form.allowDuplicateSubmit,
       questions: form.questions
     },
     null,
@@ -44,10 +46,15 @@ async function loadSurveyDetail() {
     pageLoading.value = true
 
     const response = await getSurveyDetail(surveyId.value)
+    if (response.code !== 20000 || !response.data) {
+      alert(response.message || '加载问卷详情失败')
+      return
+    }
     const result = response.data
 
     form.title = result.title
     form.description = result.description
+    form.allowDuplicateSubmit = Boolean(result.allowDuplicateSubmit)
     form.questions = result.schema.map((item) => ({
       id: item.id,
       type: item.type,
@@ -78,8 +85,14 @@ async function handleSaveEdit() {
       id: surveyId.value,
       title: form.title,
       description: form.description,
-      questions: form.questions
+      questions: form.questions,
+      allowDuplicateSubmit: form.allowDuplicateSubmit
     })
+
+    if (response.code !== 20000 || !response.data) {
+      alert(response.message || '保存修改失败')
+      return
+    }
 
     const result = response.data
 
@@ -87,7 +100,8 @@ async function handleSaveEdit() {
       id: result.id,
       title: result.title,
       description: result.description,
-      schema: result.schema
+      schema: result.schema,
+      allowDuplicateSubmit: Boolean(result.allowDuplicateSubmit)
     })
 
     appendOperationLog({
@@ -97,7 +111,7 @@ async function handleSaveEdit() {
     })
 
     alert(`修改成功，问卷ID：${result.id}，题目数：${result.schema.length}`)
-    router.push('/admin')
+    router.push('/admin/surveys')
   } catch (error) {
     alert('保存修改失败')
   } finally {
@@ -213,11 +227,16 @@ onMounted(() => {
             <p style="margin: 8px 0 0; color: #666;">
               当前问卷 ID：{{ surveyId }}
             </p>
-          </div>
+          </div>          <div style="display: flex; align-items: center; gap: 16px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <el-switch v-model="form.allowDuplicateSubmit" />
+              <span style="font-weight: 600; color: #333;">允许重复提交</span>
+            </div>
 
-          <el-button @click="handleBack">
-            返回列表
-          </el-button>
+            <el-button @click="handleBack">
+              返回列表
+            </el-button>
+          </div>
         </div>
       </template>
 
@@ -351,7 +370,6 @@ onMounted(() => {
           <el-button type="primary" :loading="loading" @click="handleSaveEdit">
             保存修改
           </el-button>
-
           <el-button @click="handleBack">
             返回列表
           </el-button>
@@ -360,3 +378,6 @@ onMounted(() => {
     </el-card>
   </div>
 </template>
+
+
+

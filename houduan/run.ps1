@@ -4,6 +4,7 @@ param(
     [string]$JavaHome,
     [switch]$PersistJavaHome,
     [switch]$Hint,
+    [switch]$NoDeps,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$MavenArgs
 )
@@ -64,11 +65,13 @@ function Ensure-MavenWrapper {
 function Show-Hint {
     Write-Host ""
     Write-Host "[run.ps1] Quick commands"
+    Write-Host "  0) Start deps (docker):  .\deps.ps1 up"
     Write-Host "  1) Compile (skip tests): .\run.ps1 -SkipTests compile"
     Write-Host "  2) Run tests:            .\run.ps1 test"
     Write-Host "  3) Package jar:          .\run.ps1 -SkipTests package"
-    Write-Host "  4) Persist JAVA_HOME:    .\run.ps1 -PersistJavaHome -SkipTests compile"
-    Write-Host "  5) Custom JAVA_HOME:     .\run.ps1 -JavaHome 'C:\Program Files\Microsoft\jdk-17.0.11.9-hotspot' test"
+    Write-Host "  4) Run app (nodeps):     .\run.ps1 -NoDeps -SkipTests spring-boot:run"
+    Write-Host "  5) Persist JAVA_HOME:    .\run.ps1 -PersistJavaHome -SkipTests compile"
+    Write-Host "  6) Custom JAVA_HOME:     .\run.ps1 -JavaHome 'C:\Program Files\Microsoft\jdk-17.0.11.9-hotspot' test"
     Write-Host ""
     Write-Host "[run.ps1] Tip: append maven flags after goals, e.g."
     Write-Host "  .\run.ps1 test -Dspring.profiles.active=dev"
@@ -82,6 +85,9 @@ if ($Hint) {
 
 Ensure-JavaHome
 $mvnwCmd = Ensure-MavenWrapper
+
+# 固定到后端目录执行，避免 nodeps 相对路径数据文件在不同启动目录下漂移
+Set-Location -Path $PSScriptRoot
 
 Write-Host "[run.ps1] JAVA_HOME=$env:JAVA_HOME"
 & java -version
@@ -97,6 +103,19 @@ if (-not $Goals -or $Goals.Count -eq 0) {
 }
 if ($MavenArgs) {
     $invokeArgs += $MavenArgs
+}
+
+if ($NoDeps) {
+    $isSpringBootRun = $invokeArgs -contains "spring-boot:run"
+    if ($isSpringBootRun) {
+        $hasProfileArg = $invokeArgs | Where-Object {
+            $_ -like "-Dspring-boot.run.profiles=*" -or
+            $_ -like "-Dspring.profiles.active=*"
+        }
+        if (-not $hasProfileArg) {
+            $invokeArgs += "-Dspring-boot.run.profiles=nodeps"
+        }
+    }
 }
 
 Write-Host "[run.ps1] Running: .\mvnw.cmd $($invokeArgs -join ' ')"

@@ -1,12 +1,14 @@
 package com.surver.sys.houduan.module.user.controller;
 
 import com.surver.sys.houduan.common.ApiResponse;
-import com.surver.sys.houduan.module.log.service.LogService;
+import com.surver.sys.houduan.module.log.service.LogServiceApi;
+import com.surver.sys.houduan.module.user.dto.ChangeOwnPasswordRequest;
 import com.surver.sys.houduan.module.user.dto.CreateUserRequest;
+import com.surver.sys.houduan.module.user.dto.ResetUserPasswordRequest;
 import com.surver.sys.houduan.module.user.dto.UpdateUserRequest;
 import com.surver.sys.houduan.module.user.dto.UserRoleRequest;
 import com.surver.sys.houduan.module.user.dto.UserStatusRequest;
-import com.surver.sys.houduan.module.user.service.UserService;
+import com.surver.sys.houduan.module.user.service.UserServiceApi;
 import com.surver.sys.houduan.security.SecurityUtils;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -23,10 +25,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/users")
 public class UserController {
 
-    private final UserService userService;
-    private final LogService logService;
+    private final UserServiceApi userService;
+    private final LogServiceApi logService;
 
-    public UserController(UserService userService, LogService logService) {
+    public UserController(UserServiceApi userService, LogServiceApi logService) {
         this.userService = userService;
         this.logService = logService;
     }
@@ -49,7 +51,7 @@ public class UserController {
     @PreAuthorize("hasAuthority('ROLE3')")
     public ApiResponse<Void> updateUser(@PathVariable Long id, @Valid @RequestBody UpdateUserRequest request) {
         userService.updateUser(id, request);
-        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE", "用户ID=" + id);
+        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE", "USER_ID=" + id);
         return ApiResponse.success();
     }
 
@@ -57,7 +59,7 @@ public class UserController {
     @PreAuthorize("hasAuthority('ROLE3')")
     public ApiResponse<Void> deleteUser(@PathVariable Long id) {
         userService.deleteUser(id);
-        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "DELETE", "用户ID=" + id);
+        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "DELETE", "USER_ID=" + id);
         return ApiResponse.success();
     }
 
@@ -65,7 +67,7 @@ public class UserController {
     @PreAuthorize("hasAuthority('ROLE3')")
     public ApiResponse<Void> updateRole(@PathVariable Long id, @Valid @RequestBody UserRoleRequest request) {
         userService.updateRole(id, request.role());
-        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE", "角色变更 用户ID=" + id);
+        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE", "ROLE userId=" + id);
         return ApiResponse.success();
     }
 
@@ -73,7 +75,28 @@ public class UserController {
     @PreAuthorize("hasAuthority('ROLE3')")
     public ApiResponse<Void> updateStatus(@PathVariable Long id, @Valid @RequestBody UserStatusRequest request) {
         userService.updateStatus(id, request.status());
-        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE", "状态变更 用户ID=" + id);
+        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE", "STATUS userId=" + id);
+        return ApiResponse.success();
+    }
+
+    @PostMapping("/{id}/password/reset")
+    @PreAuthorize("hasAuthority('ROLE3')")
+    public ApiResponse<Void> resetUserPassword(@PathVariable Long id,
+                                               @Valid @RequestBody ResetUserPasswordRequest request) {
+        userService.resetLocalUserPassword(id, request.newPassword());
+        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE", "RESET_PASSWORD userId=" + id);
+        return ApiResponse.success();
+    }
+
+    @PostMapping("/password/change")
+    @PreAuthorize("isAuthenticated()")
+    public ApiResponse<Void> changeOwnPassword(@Valid @RequestBody ChangeOwnPasswordRequest request) {
+        userService.changeOwnLocalPassword(
+                SecurityUtils.getCurrentUser().userId(),
+                request.oldPassword(),
+                request.newPassword()
+        );
+        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE", "CHANGE_OWN_PASSWORD");
         return ApiResponse.success();
     }
 }

@@ -1,6 +1,7 @@
-import request from './request'
+﻿import request from './request'
+import axios from 'axios'
 import * as XLSX from 'xlsx'
-import { USE_REAL_API } from '../config/env'
+import { API_BASE, USE_REAL_API } from '../config/env'
 import { useAuthStore } from '../stores/auth'
 import { useSurveyAuthStore } from '../stores/survey-auth'
 
@@ -29,6 +30,7 @@ export interface CreateSurveyDraftParams {
   title: string
   description: string
   questions: QuestionSchemaItem[]
+  allowDuplicateSubmit: boolean
 }
 
 export interface CreateSurveyDraftResult {
@@ -38,6 +40,7 @@ export interface CreateSurveyDraftResult {
   status: 'DRAFT'
   schema: QuestionSchemaItem[]
   creatorId: number
+  allowDuplicateSubmit?: boolean
 }
 
 export interface SurveyDetailResult {
@@ -47,6 +50,7 @@ export interface SurveyDetailResult {
   status: 'DRAFT' | 'PUBLISHED' | 'CLOSED'
   schema: QuestionSchemaItem[]
   creatorId: number
+  allowDuplicateSubmit?: boolean
 }
 
 export interface UpdateSurveyParams {
@@ -54,6 +58,7 @@ export interface UpdateSurveyParams {
   title: string
   description: string
   questions: QuestionSchemaItem[]
+  allowDuplicateSubmit: boolean
 }
 
 export interface PublicSurveyResult {
@@ -61,6 +66,7 @@ export interface PublicSurveyResult {
   title: string
   description: string
   schema: QuestionSchemaItem[]
+  entryToken?: string
 }
 
 export interface SurveyListItemResult {
@@ -98,11 +104,39 @@ export interface SurveyStatsResult {
 export interface SubmitSurveyParams {
   surveyId: number
   answers: Record<number, string | string[] | number>
+  entryToken?: string
+  previewMode?: boolean
 }
 
 export interface SubmitSurveyResult {
   surveyId: number
   submitTime: string
+}
+
+export interface MySurveySubmissionItemResult {
+  surveyId: number
+  surveyTitle: string
+  submitTime: string
+}
+
+export interface MySurveySubmissionDetailResult {
+  surveyId: number
+  surveyTitle: string
+  surveyDescription: string
+  schema: QuestionSchemaItem[]
+  answers: Record<string, string | string[] | number>
+  submitTime: string
+}
+
+interface SubmittedSnapshotStorage {
+  surveyId: number
+  surveyTitle: string
+  surveyDescription: string
+  schema: QuestionSchemaItem[]
+  answers: Record<string, string | string[] | number>
+  userId?: number | null
+  username?: string
+  submitTime?: string
 }
 
 const DETAIL_KEY = 'SURVEY_DETAIL_MAP'
@@ -114,6 +148,122 @@ function readDetailMap(): Record<number, SurveyDetailResult> {
 
 function readSurveyList(): SurveyListItemResult[] {
   return JSON.parse(localStorage.getItem(LIST_KEY) || '[]')
+}
+
+function writeDetailMap(map: Record<number, SurveyDetailResult>) {
+  localStorage.setItem(DETAIL_KEY, JSON.stringify(map))
+}
+
+function writeSurveyList(list: SurveyListItemResult[]) {
+  localStorage.setItem(LIST_KEY, JSON.stringify(list))
+}
+
+function sanitizeStorageKeyPart(value: string) {
+  return value.replace(/[^a-zA-Z0-9_-]/g, '_')
+}
+
+function getStorageUserScope() {
+  const authStore = useAuthStore()
+
+  if (typeof authStore.userId === 'number' && Number.isFinite(authStore.userId)) {
+    return `uid_${authStore.userId}`
+  }
+
+  const localUserId = String(localStorage.getItem('AUTH_USER_ID') || '').trim()
+  if (localUserId && /^\d+$/.test(localUserId)) {
+    return `uid_${localUserId}`
+  }
+
+  const username = String(authStore.username || localStorage.getItem('AUTH_USERNAME') || '').trim()
+  if (username) {
+    return `name_${sanitizeStorageKeyPart(username)}`
+  }
+
+  return 'anon'
+}
+
+function getSubmittedStoragePrefix() {
+  return `SURVEY_SUBMITTED_${getStorageUserScope()}_`
+}
+
+function normalizeSubmittedSnapshot(raw: unknown): SubmittedSnapshotStorage | null {
+  if (!raw || typeof raw !== 'object') return null
+
+  const candidate = raw as Partial<SubmittedSnapshotStorage>
+  const surveyId = Number(candidate.surveyId)
+  if (!Number.isFinite(surveyId) || surveyId <= 0) return null
+
+  const title = String(candidate.surveyTitle || '').trim()
+  const description = String(candidate.surveyDescription || '')
+  const schema = Array.isArray(candidate.schema) ? candidate.schema : []
+  const answersRaw = candidate.answers
+  const answers: Record<string, string | string[] | number> = {}
+  const userIdRaw = Number(candidate.userId)
+  const userId =
+    Number.isFinite(userIdRaw) && userIdRaw > 0
+      ? userIdRaw
+      : null
+  const username = String(candidate.username || '').trim()
+
+  if (answersRaw && typeof answersRaw === 'object') {
+    Object.entries(answersRaw as Record<string, unknown>).forEach(([key, value]) => {
+      if (
+        typeof value === 'string' ||
+        typeof value === 'number' ||
+        (Array.isArray(value) && value.every((item) => typeof item === 'string'))
+      ) {
+        answers[key] = value
+      }
+    })
+  }
+
+  return {
+    surveyId,
+    surveyTitle: title || `问卷${surveyId}`,
+    surveyDescription: description,
+    schema,
+    answers,
+    userId,
+    username,
+    submitTime: typeof candidate.submitTime === 'string' ? candidate.submitTime : ''
+  }
+}
+
+function listSubmittedSnapshotsFromStorage() {
+  const snapshots: SubmittedSnapshotStorage[] = []
+  const prefix = getSubmittedStoragePrefix()
+
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i)
+    if (!key || !key.startsWith(prefix)) continue
+
+    const raw = localStorage.getItem(key)
+    if (!raw) continue
+
+    try {
+      const parsed = JSON.parse(raw)
+      const normalized = normalizeSubmittedSnapshot(parsed)
+      if (normalized) {
+        snapshots.push(normalized)
+      }
+    } catch (error) {
+      // ignore invalid cache payload
+    }
+  }
+
+  return snapshots
+}
+
+function getSubmittedSnapshotFromStorage(surveyId: number) {
+  const raw = localStorage.getItem(`${getSubmittedStoragePrefix()}${surveyId}`)
+  if (!raw) return null
+
+  try {
+    const parsed = JSON.parse(raw)
+    return normalizeSubmittedSnapshot(parsed)
+  } catch (error) {
+    return null
+  }
 }
 
 function getNowText() {
@@ -133,6 +283,44 @@ function getDateText() {
   const m = String(now.getMonth() + 1).padStart(2, '0')
   const d = String(now.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
+}
+
+function buildMockEntryToken(surveyId: number) {
+  return `mock-entry-${surveyId}-${Date.now()}`
+}
+
+function triggerFileDownload(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
+}
+
+function parseFileNameFromDisposition(
+  dispositionValue: string | undefined,
+  fallbackName: string
+) {
+  if (!dispositionValue) return fallbackName
+
+  const utf8Matched = dispositionValue.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8Matched?.[1]) {
+    try {
+      return decodeURIComponent(utf8Matched[1].trim())
+    } catch (error) {
+      return utf8Matched[1].trim()
+    }
+  }
+
+  const asciiMatched = dispositionValue.match(/filename=\"?([^\"]+)\"?/i)
+  if (asciiMatched?.[1]) {
+    return asciiMatched[1].trim()
+  }
+
+  return fallbackName
 }
 
 function buildMockStats(questions: QuestionSchemaItem[]): SurveyStatsItem[] {
@@ -169,7 +357,7 @@ function buildMockStats(questions: QuestionSchemaItem[]): SurveyStatsItem[] {
         title: question.title,
         type: question.type,
         required: question.required,
-        textSummary: '当前为演示版统计：这里后续可展示高频关键词、示例回答、回答数等信息。'
+        textSummary: '当前为演示版统计：这里后续可展示高频关键词、示例回答、回答数量等信息。'
       }
     }
 
@@ -240,9 +428,9 @@ function buildMockSubmissionRows(survey: SurveyDetailResult) {
 
   return mockUsers.map((user) => {
     const row: Record<string, string | number> = {
-      提交时间: user.submitTime,
-      账号: user.account,
-      用户名: user.username
+      '提交时间': user.submitTime,
+      '账号': user.account,
+      '用户名': user.username
     }
 
     survey.schema.forEach((question) => {
@@ -300,7 +488,8 @@ export async function createSurveyDraft(
           description: params.description,
           status: 'DRAFT',
           schema: params.questions,
-          creatorId
+          creatorId,
+          allowDuplicateSubmit: params.allowDuplicateSubmit
         }
       })
     }, 500)
@@ -379,11 +568,117 @@ export async function updateSurvey(
           description: params.description,
           status: target.status,
           schema: params.questions,
-          creatorId: target.creatorId
+          creatorId: target.creatorId,
+          allowDuplicateSubmit: params.allowDuplicateSubmit
         }
       })
     }, 500)
   })
+}
+
+export async function publishSurveyApi(id: number): Promise<ApiResponse<null>> {
+  if (USE_REAL_API) {
+    return request.post(`/surveys/${id}/publish`)
+  }
+
+  const detailMap = readDetailMap()
+  const target = detailMap[id]
+
+  if (!target) {
+    return {
+      code: 40404,
+      message: '问卷不存在',
+      data: null
+    }
+  }
+
+  detailMap[id] = {
+    ...target,
+    status: 'PUBLISHED'
+  }
+  writeDetailMap(detailMap)
+
+  const nextList = readSurveyList().map((item) =>
+    item.id === id
+      ? {
+          ...item,
+          status: 'PUBLISHED' as const
+        }
+      : item
+  )
+  writeSurveyList(nextList)
+
+  return {
+    code: 20000,
+    message: '发布成功',
+    data: null
+  }
+}
+
+export async function closeSurveyApi(id: number): Promise<ApiResponse<null>> {
+  if (USE_REAL_API) {
+    return request.post(`/surveys/${id}/close`)
+  }
+
+  const detailMap = readDetailMap()
+  const target = detailMap[id]
+
+  if (!target) {
+    return {
+      code: 40404,
+      message: '问卷不存在',
+      data: null
+    }
+  }
+
+  detailMap[id] = {
+    ...target,
+    status: 'CLOSED'
+  }
+  writeDetailMap(detailMap)
+
+  const nextList = readSurveyList().map((item) =>
+    item.id === id
+      ? {
+          ...item,
+          status: 'CLOSED' as const
+        }
+      : item
+  )
+  writeSurveyList(nextList)
+
+  return {
+    code: 20000,
+    message: '关闭成功',
+    data: null
+  }
+}
+
+export async function deleteSurveyApi(id: number): Promise<ApiResponse<null>> {
+  if (USE_REAL_API) {
+    return request.delete(`/surveys/${id}`)
+  }
+
+  const detailMap = readDetailMap()
+  const target = detailMap[id]
+
+  if (!target) {
+    return {
+      code: 40404,
+      message: '问卷不存在',
+      data: null
+    }
+  }
+
+  delete detailMap[id]
+  writeDetailMap(detailMap)
+  writeSurveyList(readSurveyList().filter((item) => item.id !== id))
+
+  return {
+    code: 20000,
+    message: '删除成功',
+    data: null
+  }
 }
 
 export async function getSurveyList(): Promise<ApiResponse<SurveyListItemResult[]>> {
@@ -484,15 +779,25 @@ export async function getSurveyStats(
 
 export async function getPublicSurvey(
   id: number,
-  mode: 'normal' | 'quota' | 'duplicate' = 'normal'
+  options?: {
+    mode?: 'normal' | 'quota' | 'duplicate'
+    previewMode?: boolean
+  }
 ): Promise<ApiResponse<PublicSurveyResult | null>> {
+  const mode = options?.mode || 'normal'
+  const previewMode = Boolean(options?.previewMode)
+
   if (USE_REAL_API) {
-    return request.get(`/surveys/${id}/public`)
+    return request.get(`/surveys/${id}/public`, {
+      params: {
+        previewMode
+      }
+    })
   }
 
   return new Promise((resolve) => {
     setTimeout(() => {
-      if (mode === 'quota') {
+      if (!previewMode && mode === 'quota') {
         resolve({
           code: 40011,
           message: '当前问卷名额已满',
@@ -501,7 +806,7 @@ export async function getPublicSurvey(
         return
       }
 
-      if (mode === 'duplicate') {
+      if (!previewMode && mode === 'duplicate') {
         resolve({
           code: 40009,
           message: '你已经提交过该问卷',
@@ -512,8 +817,19 @@ export async function getPublicSurvey(
 
       const detailMap = readDetailMap()
       const target = detailMap[id]
+      const authStore = useAuthStore()
 
       if (!target) {
+        resolve({
+          code: 40404,
+          message: '问卷不存在或不可访问',
+          data: null
+        })
+        return
+      }
+
+      const isManagerRole = authStore.role === 'ROLE2' || authStore.role === 'ROLE3'
+      if (target.status !== 'PUBLISHED' && !isManagerRole) {
         resolve({
           code: 40404,
           message: '问卷不存在或不可访问',
@@ -529,7 +845,8 @@ export async function getPublicSurvey(
           id: target.id,
           title: target.title,
           description: target.description,
-          schema: target.schema
+          schema: target.schema,
+          entryToken: previewMode ? '' : buildMockEntryToken(target.id)
         }
       })
     }, 500)
@@ -541,6 +858,27 @@ export async function submitSurvey(
 ): Promise<ApiResponse<SubmitSurveyResult>> {
   if (USE_REAL_API) {
     return request.post(`/surveys/${params.surveyId}/responses`, params)
+  }
+
+  const detailMap = readDetailMap()
+  const target = detailMap[params.surveyId]
+  const authStore = useAuthStore()
+
+  if (!target) {
+    return {
+      code: 40404,
+      message: '问卷不存在或不可访问',
+      data: null as unknown as SubmitSurveyResult
+    }
+  }
+
+  const isManagerRole = authStore.role === 'ROLE2' || authStore.role === 'ROLE3'
+  if (target.status !== 'PUBLISHED' && !isManagerRole) {
+    return {
+      code: 40404,
+      message: '问卷不存在或不可访问',
+      data: null as unknown as SubmitSurveyResult
+    }
   }
 
   return new Promise((resolve) => {
@@ -557,11 +895,138 @@ export async function submitSurvey(
   })
 }
 
+export async function getMySurveySubmissions(): Promise<ApiResponse<MySurveySubmissionItemResult[]>> {
+  if (USE_REAL_API) {
+    const response = await request.get('/surveys/my/submissions')
+    const message = String(response?.message || '')
+
+    if (
+      response?.code === 50000 &&
+      /No static resource\s+api\/surveys\/my\/submissions/i.test(message)
+    ) {
+      const list = listSubmittedSnapshotsFromStorage()
+        .map((item) => ({
+          surveyId: item.surveyId,
+          surveyTitle: item.surveyTitle,
+          submitTime: item.submitTime || ''
+        }))
+        .sort((a, b) => {
+          if (a.submitTime && b.submitTime) {
+            return b.submitTime.localeCompare(a.submitTime)
+          }
+          return b.surveyId - a.surveyId
+        })
+
+      return {
+        code: 20000,
+        message: 'LOCAL_FALLBACK_MISSING_ENDPOINT',
+        data: list
+      }
+    }
+
+    return response
+  }
+
+  const list = listSubmittedSnapshotsFromStorage()
+    .map((item) => ({
+      surveyId: item.surveyId,
+      surveyTitle: item.surveyTitle,
+      submitTime: item.submitTime || ''
+    }))
+    .sort((a, b) => {
+      if (a.submitTime && b.submitTime) {
+        return b.submitTime.localeCompare(a.submitTime)
+      }
+      return b.surveyId - a.surveyId
+    })
+
+  return {
+    code: 20000,
+    message: 'success',
+    data: list
+  }
+}
+
+export async function getMySurveySubmissionDetail(
+  surveyId: number
+): Promise<ApiResponse<MySurveySubmissionDetailResult>> {
+  if (USE_REAL_API) {
+    const response = await request.get(`/surveys/${surveyId}/my-submission`)
+    const message = String(response?.message || '')
+
+    if (
+      response?.code === 50000 &&
+      /No static resource\s+api\/surveys\/\d+\/my-submission/i.test(message)
+    ) {
+      const snapshot = getSubmittedSnapshotFromStorage(surveyId)
+
+      if (!snapshot) {
+        return {
+          code: 40404,
+          message: '后端缺少答卷回看接口且本地无缓存，请重启后端后再试',
+          data: null as unknown as MySurveySubmissionDetailResult
+        }
+      }
+
+      return {
+        code: 20000,
+        message: 'LOCAL_FALLBACK_MISSING_ENDPOINT',
+        data: {
+          surveyId: snapshot.surveyId,
+          surveyTitle: snapshot.surveyTitle,
+          surveyDescription: snapshot.surveyDescription,
+          schema: snapshot.schema,
+          answers: snapshot.answers,
+          submitTime: snapshot.submitTime || ''
+        }
+      }
+    }
+
+    return response
+  }
+
+  const snapshot = getSubmittedSnapshotFromStorage(surveyId)
+
+  if (!snapshot) {
+    return {
+      code: 40404,
+      message: '未找到已提交记录',
+      data: null as unknown as MySurveySubmissionDetailResult
+    }
+  }
+
+  return {
+    code: 20000,
+    message: 'success',
+    data: {
+      surveyId: snapshot.surveyId,
+      surveyTitle: snapshot.surveyTitle,
+      surveyDescription: snapshot.surveyDescription,
+      schema: snapshot.schema,
+      answers: snapshot.answers,
+      submitTime: snapshot.submitTime || ''
+    }
+  }
+}
+
 export async function exportSurveyStatsExcel(id: number): Promise<ApiResponse<null>> {
   if (USE_REAL_API) {
-    await request.get(`/surveys/${id}/export`, {
-      responseType: 'blob'
+    const token = localStorage.getItem('AUTH_TOKEN')
+    const response = await axios.get(`${API_BASE}/surveys/${id}/export`, {
+      responseType: 'blob',
+      headers: token
+        ? {
+            Authorization: `Bearer ${token}`
+          }
+        : undefined
     })
+
+    const disposition =
+      response.headers['content-disposition'] ||
+      response.headers['Content-Disposition']
+    const filename = parseFileNameFromDisposition(disposition, `survey-${id}.xlsx`)
+
+    triggerFileDownload(response.data, filename)
 
     return {
       code: 20000,
@@ -604,3 +1069,4 @@ export async function exportSurveyStatsExcel(id: number): Promise<ApiResponse<nu
     data: null
   }
 }
+

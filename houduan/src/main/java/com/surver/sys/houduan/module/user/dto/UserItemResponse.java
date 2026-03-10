@@ -4,8 +4,10 @@ public record UserItemResponse(
         Long id,
         String username,
         String realName,
+        String remark,
         String role,
         String status,
-        String createdAt
+        String createdAt,
+        boolean localAccount
 ) {
 }

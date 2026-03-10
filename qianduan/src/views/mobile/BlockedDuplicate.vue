@@ -40,7 +40,7 @@ function viewSurvey() {
         border-radius: 16px;
         padding: 32px 24px;
         text-align: center;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
       "
     >
       <div style="font-size: 48px; margin-bottom: 12px;">📝</div>
@@ -51,7 +51,7 @@ function viewSurvey() {
 
       <div style="display: flex; flex-direction: column; gap: 12px;">
         <van-button type="primary" block @click="goHome">
-          返回首页
+          返回个人首页
         </van-button>
 
         <van-button plain block @click="viewSurvey">

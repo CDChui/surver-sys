@@ -5,6 +5,7 @@ public record LoginResponse(
         String role,
         String username,
         String realName,
-        Long userId
+        Long userId,
+        boolean localAccount
 ) {
 }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.surver.sys.houduan.common.ErrorCode;
 import com.surver.sys.houduan.exception.BizException;
+import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -13,7 +14,8 @@ import java.util.List;
 import java.util.Map;
 
 @Service
-public class SettingsService {
+@Profile("!nodeps")
+public class SettingsService implements SettingsServiceApi {
 
     private static final long SETTINGS_ID = 1L;
 
@@ -29,7 +31,8 @@ public class SettingsService {
         ensureSettingsRow();
         Map<String, Object> row = jdbcTemplate.queryForMap("""
                 SELECT system_name, system_domain, default_page_size, enable_log,
-                       enable_resume_draft, allow_duplicate_submit, oauth_json, auth_integration_json
+                       enable_resume_draft, allow_duplicate_submit, admin_logo, user_home_logo,
+                       oauth_json, auth_integration_json
                 FROM sys_settings
                 WHERE id = ?
                 """, SETTINGS_ID);
@@ -40,6 +43,8 @@ public class SettingsService {
         result.put("enableLog", boolVal(row.get("enable_log")));
         result.put("enableResumeDraft", boolVal(row.get("enable_resume_draft")));
         result.put("allowDuplicateSubmit", boolVal(row.get("allow_duplicate_submit")));
+        result.put("adminLogo", str(row.get("admin_logo")));
+        result.put("userHomeLogo", str(row.get("user_home_logo")));
         result.put("oauth", parseJsonToMap(row.get("oauth_json"), (Map<String, Object>) defaultSettings().get("oauth")));
         result.put("authIntegration", parseJsonToMap(row.get("auth_integration_json"),
                 (Map<String, Object>) defaultSettings().get("authIntegration")));
@@ -63,7 +68,8 @@ public class SettingsService {
             jdbcTemplate.update("""
                     UPDATE sys_settings
                     SET system_name = ?, system_domain = ?, default_page_size = ?, enable_log = ?,
-                        enable_resume_draft = ?, allow_duplicate_submit = ?, oauth_json = ?, auth_integration_json = ?
+                        enable_resume_draft = ?, allow_duplicate_submit = ?, admin_logo = ?, user_home_logo = ?,
+                        oauth_json = ?, auth_integration_json = ?
                     WHERE id = ?
                     """,
                     str(merged.get("systemName")),
@@ -72,6 +78,8 @@ public class SettingsService {
                     boolVal(merged.get("enableLog")) ? 1 : 0,
                     boolVal(merged.get("enableResumeDraft")) ? 1 : 0,
                     boolVal(merged.get("allowDuplicateSubmit")) ? 1 : 0,
+                    str(merged.get("adminLogo")),
+                    str(merged.get("userHomeLogo")),
                     objectMapper.writeValueAsString(merged.get("oauth")),
                     objectMapper.writeValueAsString(merged.get("authIntegration")),
                     SETTINGS_ID
@@ -91,9 +99,10 @@ public class SettingsService {
             jdbcTemplate.update("""
                     INSERT INTO sys_settings (
                         id, system_name, system_domain, default_page_size, enable_log,
-                        enable_resume_draft, allow_duplicate_submit, oauth_json, auth_integration_json
+                        enable_resume_draft, allow_duplicate_submit, admin_logo, user_home_logo,
+                        oauth_json, auth_integration_json
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     SETTINGS_ID,
                     defaults.get("systemName"),
@@ -102,6 +111,8 @@ public class SettingsService {
                     boolVal(defaults.get("enableLog")) ? 1 : 0,
                     boolVal(defaults.get("enableResumeDraft")) ? 1 : 0,
                     boolVal(defaults.get("allowDuplicateSubmit")) ? 1 : 0,
+                    defaults.get("adminLogo"),
+                    defaults.get("userHomeLogo"),
                     objectMapper.writeValueAsString(defaults.get("oauth")),
                     objectMapper.writeValueAsString(defaults.get("authIntegration"))
             );
@@ -136,6 +147,8 @@ public class SettingsService {
         root.put("enableLog", true);
         root.put("enableResumeDraft", true);
         root.put("allowDuplicateSubmit", false);
+        root.put("adminLogo", "");
+        root.put("userHomeLogo", "");
 
         Map<String, Object> oauth = new LinkedHashMap<>();
         oauth.put("enabled", false);

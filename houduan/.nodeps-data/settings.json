@@ -1,0 +1,47 @@
+{
+  "systemName" : "??????-?????",
+  "systemDomain" : "https://persist-20260310001702.example.com",
+  "defaultPageSize" : 20,
+  "enableLog" : true,
+  "enableResumeDraft" : true,
+  "allowDuplicateSubmit" : false,
+  "adminLogo" : "data:image/png;base64,ADMIN_20260310001702",
+  "userHomeLogo" : "data:image/png;base64,USER_20260310001702",
+  "oauth" : {
+    "enabled" : false,
+    "environment" : "CUSTOM",
+    "authDomain" : "",
+    "clientId" : "",
+    "clientSecret" : "",
+    "redirectUri" : "",
+    "logoutRedirectUri" : ""
+  },
+  "authIntegration" : {
+    "loginMode" : "HYBRID",
+    "defaultProviderId" : "iam-default",
+    "autoCreateUser" : true,
+    "defaultRole" : "ROLE1",
+    "providers" : [ {
+      "id" : "iam-default",
+      "name" : "IAM??",
+      "protocol" : "IAM_TEMPLATE",
+      "enabled" : true,
+      "priority" : 1,
+      "environment" : "CUSTOM",
+      "authDomain" : "https://iam.example.com",
+      "clientId" : "persist-client",
+      "clientSecret" : "persist-secret",
+      "scope" : "openid profile",
+      "redirectUri" : "https://persist-20260310001702.example.com/auth/oauth/callback",
+      "logoutRedirectUri" : "https://persist-20260310001702.example.com/auth/logout/callback",
+      "authorizeUrl" : "",
+      "tokenUrl" : "",
+      "userInfoUrl" : "",
+      "refreshUrl" : "",
+      "revokeUrl" : "",
+      "userIdField" : "employeeNumber",
+      "realNameField" : "displayName",
+      "emailField" : "mail"
+    } ]
+  }
+}

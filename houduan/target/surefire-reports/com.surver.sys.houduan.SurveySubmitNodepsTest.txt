@@ -1,0 +1,18 @@
+-------------------------------------------------------------------------------
+Test set: com.surver.sys.houduan.SurveySubmitNodepsTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.123 s <<< FAILURE! -- in com.surver.sys.houduan.SurveySubmitNodepsTest
+com.surver.sys.houduan.SurveySubmitNodepsTest.submitSameSurveyTwice_shouldReturn40009OnSecondSubmit -- Time elapsed: 0.117 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: 20000
+ but was: 40404
+	at java.base/jdk.internal.reflect.NativeConstructorAccessorImpl.newInstance0(Native Method)
+	at java.base/jdk.internal.reflect.NativeConstructorAccessorImpl.newInstance(NativeConstructorAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingConstructorAccessorImpl.newInstance(DelegatingConstructorAccessorImpl.java:45)
+	at java.base/java.lang.reflect.Constructor.newInstanceWithCaller(Constructor.java:499)
+	at com.surver.sys.houduan.SurveySubmitNodepsTest.submitSameSurveyTwice_shouldReturn40009OnSecondSubmit(SurveySubmitNodepsTest.java:48)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+
