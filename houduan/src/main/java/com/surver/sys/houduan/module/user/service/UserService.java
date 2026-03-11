@@ -18,7 +18,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.format.DateTimeFormatter;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -67,7 +66,7 @@ public class UserService implements UserServiceApi {
                 """,
                 adminInitProperties.getUsername(),
                 adminInitProperties.getUsername(),
-                "System Admin",
+                "系统管理员",
                 "",
                 passwordEncoder.encode(adminInitProperties.getPassword())
         );
@@ -78,10 +77,9 @@ public class UserService implements UserServiceApi {
         List<UserModel> users = jdbcTemplate.query("""
                 SELECT id, uid, display_name, remark, role, status, created_at, is_local, password_hash
                 FROM sys_user
-                ORDER BY id ASC
+                ORDER BY created_at DESC, id DESC
                 """, userMapper);
         return users.stream()
-                .sorted(Comparator.comparing(UserModel::getId))
                 .map(this::toResponse)
                 .toList();
     }
@@ -109,7 +107,7 @@ public class UserService implements UserServiceApi {
                 toStatusFlag(request.status())
         );
         return toResponse(findLocalUserByUsername(normalizedUsername)
-                .orElseThrow(() -> new BizException(ErrorCode.SERVER_ERROR, "Failed to create user")));
+                .orElseThrow(() -> new BizException(ErrorCode.SERVER_ERROR, "创建用户失败")));
     }
 
     @Override
@@ -118,7 +116,7 @@ public class UserService implements UserServiceApi {
         String nextRealName = normalize(request.realName());
         String nextRemark = normalize(request.remark());
         if (!model.isLocalAccount() && !nextRealName.equals(model.getRealName())) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Third-party user's real name cannot be modified");
+            throw new BizException(ErrorCode.INVALID_PARAM, "第三方用户的姓名不可修改");
         }
 
         String persistedRealName = model.isLocalAccount() ? nextRealName : model.getRealName();
@@ -134,7 +132,7 @@ public class UserService implements UserServiceApi {
                 id
         );
         if (updated == 0) {
-            throw new BizException(ErrorCode.NOT_FOUND, "User not found");
+            throw new BizException(ErrorCode.NOT_FOUND, "用户不存在");
         }
         return toResponse(getById(id));
     }
@@ -143,15 +141,15 @@ public class UserService implements UserServiceApi {
     public void deleteUser(Long id) {
         UserModel model = getById(id);
         if ("ROLE3".equals(model.getRole())) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "System administrator cannot be deleted");
+            throw new BizException(ErrorCode.INVALID_PARAM, "系统管理员不可删除");
         }
         try {
             int deleted = jdbcTemplate.update("DELETE FROM sys_user WHERE id = ?", id);
             if (deleted == 0) {
-                throw new BizException(ErrorCode.NOT_FOUND, "User not found");
+                throw new BizException(ErrorCode.NOT_FOUND, "用户不存在");
             }
         } catch (DataIntegrityViolationException e) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "User is referenced by business data and cannot be deleted");
+            throw new BizException(ErrorCode.INVALID_PARAM, "用户已被业务数据引用，无法删除");
         }
     }
 
@@ -160,7 +158,7 @@ public class UserService implements UserServiceApi {
         int updated = jdbcTemplate.update("UPDATE sys_user SET role = ? WHERE id = ?",
                 normalize(role).toUpperCase(Locale.ROOT), id);
         if (updated == 0) {
-            throw new BizException(ErrorCode.NOT_FOUND, "User not found");
+            throw new BizException(ErrorCode.NOT_FOUND, "用户不存在");
         }
     }
 
@@ -169,7 +167,7 @@ public class UserService implements UserServiceApi {
         int updated = jdbcTemplate.update("UPDATE sys_user SET status = ? WHERE id = ?",
                 toStatusFlag(status), id);
         if (updated == 0) {
-            throw new BizException(ErrorCode.NOT_FOUND, "User not found");
+            throw new BizException(ErrorCode.NOT_FOUND, "用户不存在");
         }
     }
 
@@ -177,7 +175,7 @@ public class UserService implements UserServiceApi {
     public void resetLocalUserPassword(Long id, String newPassword) {
         UserModel model = getById(id);
         if (!model.isLocalAccount()) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Only local users support password reset");
+            throw new BizException(ErrorCode.INVALID_PARAM, "仅本地用户支持重置密码");
         }
 
         String normalized = normalize(newPassword);
@@ -190,7 +188,7 @@ public class UserService implements UserServiceApi {
                 """, passwordEncoder.encode(normalized), id);
 
         if (updated == 0) {
-            throw new BizException(ErrorCode.NOT_FOUND, "User not found");
+            throw new BizException(ErrorCode.NOT_FOUND, "用户不存在");
         }
     }
 
@@ -198,7 +196,7 @@ public class UserService implements UserServiceApi {
     public void changeOwnLocalPassword(Long userId, String oldPassword, String newPassword) {
         UserModel model = getById(userId);
         if (!model.isLocalAccount()) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Current account is not a local account");
+            throw new BizException(ErrorCode.INVALID_PARAM, "当前账号不是本地账号");
         }
 
         String oldNormalized = normalize(oldPassword);
@@ -206,15 +204,15 @@ public class UserService implements UserServiceApi {
         ensureValidPassword(newNormalized);
 
         if (oldNormalized.isEmpty()) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Old password is required");
+            throw new BizException(ErrorCode.INVALID_PARAM, "请输入旧密码");
         }
         if (oldNormalized.equals(newNormalized)) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "New password must be different from old password");
+            throw new BizException(ErrorCode.INVALID_PARAM, "新密码不能与旧密码相同");
         }
 
         String passwordHash = model.getPasswordHash();
         if (passwordHash == null || passwordHash.isBlank() || !passwordEncoder.matches(oldNormalized, passwordHash)) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Old password is incorrect");
+            throw new BizException(ErrorCode.INVALID_PARAM, "旧密码不正确");
         }
 
         jdbcTemplate.update("""
@@ -250,7 +248,7 @@ public class UserService implements UserServiceApi {
                     WHERE id = ?
                     """, userMapper, id);
         } catch (EmptyResultDataAccessException e) {
-            throw new BizException(ErrorCode.NOT_FOUND, "User not found");
+            throw new BizException(ErrorCode.NOT_FOUND, "用户不存在");
         }
     }
 
@@ -318,7 +316,7 @@ public class UserService implements UserServiceApi {
                 normalize(role).toUpperCase(Locale.ROOT));
 
         return findOauthUserByUsername(normalizedUsername)
-                .orElseThrow(() -> new BizException(ErrorCode.SERVER_ERROR, "Failed to create oauth user"));
+                .orElseThrow(() -> new BizException(ErrorCode.SERVER_ERROR, "创建第三方用户失败"));
     }
 
     private Optional<UserModel> findOauthUserByUsername(String username) {
@@ -343,7 +341,7 @@ public class UserService implements UserServiceApi {
                 username
         );
         if (count != null && count > 0) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Username already exists");
+            throw new BizException(ErrorCode.INVALID_PARAM, "用户名已存在");
         }
     }
 
@@ -370,10 +368,10 @@ public class UserService implements UserServiceApi {
 
     private static void ensureValidPassword(String password) {
         if (password == null || password.isBlank()) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Password cannot be empty");
+            throw new BizException(ErrorCode.INVALID_PARAM, "密码不能为空");
         }
         if (password.length() < 6 || password.length() > 64) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Password length must be between 6 and 64");
+            throw new BizException(ErrorCode.INVALID_PARAM, "密码长度需在 6 到 64 位之间");
         }
     }
 }

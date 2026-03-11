@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, reactive, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -27,20 +27,6 @@ const form = reactive({
   questions: [] as QuestionSchemaItem[]
 })
 
-const schemaPreview = computed(() => {
-  return JSON.stringify(
-    {
-      id: surveyId.value,
-      title: form.title,
-      description: form.description,
-      allowDuplicateSubmit: form.allowDuplicateSubmit,
-      questions: form.questions
-    },
-    null,
-    2
-  )
-})
-
 async function loadSurveyDetail() {
   try {
     pageLoading.value = true
@@ -55,16 +41,25 @@ async function loadSurveyDetail() {
     form.title = result.title
     form.description = result.description
     form.allowDuplicateSubmit = Boolean(result.allowDuplicateSubmit)
-    form.questions = result.schema.map((item) => ({
-      id: item.id,
-      type: item.type,
-      title: item.title,
-      required: item.required,
-      options: item.options.map((opt) => ({
-        id: opt.id,
-        label: opt.label
-      }))
-    }))
+    form.questions = result.schema.map((item) => {
+      const question: QuestionSchemaItem = {
+        id: item.id,
+        type: item.type,
+        title: item.title,
+        required: item.required,
+        options: (item.options || []).map((opt) => ({
+          id: opt.id,
+          label: opt.label
+        }))
+      }
+
+      if (item.type === 'rate') {
+        question.min = typeof item.min === 'number' ? item.min : 1
+        question.max = typeof item.max === 'number' ? item.max : 5
+      }
+
+      return question
+    })
   } catch (error) {
     alert('加载问卷详情失败')
   } finally {
@@ -142,6 +137,11 @@ function addQuestion(type: QuestionType) {
         : []
   }
 
+  if (type === 'rate') {
+    newQuestion.min = 1
+    newQuestion.max = 5
+  }
+
   form.questions.push(newQuestion)
 }
 
@@ -176,6 +176,56 @@ function moveQuestionDown(index: number) {
 
 function isChoiceQuestion(question: QuestionSchemaItem) {
   return question.type === 'single' || question.type === 'multi'
+}
+
+function isRateQuestion(question: QuestionSchemaItem) {
+  return question.type === 'rate'
+}
+
+function clampInt(value: unknown, min: number, max: number) {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return min
+  const intVal = Math.floor(num)
+  return Math.min(Math.max(intVal, min), max)
+}
+
+function normalizeRateRange(question: QuestionSchemaItem) {
+  if (question.type !== 'rate') return
+  const min = Number.isFinite(question.min) ? Number(question.min) : 1
+  const max = Number.isFinite(question.max) ? Number(question.max) : min + 4
+  const safeMin = Math.floor(min)
+  const safeMax = Math.max(Math.floor(max), safeMin)
+  question.min = safeMin
+  question.max = safeMax
+}
+
+function getRateMin(question: QuestionSchemaItem) {
+  normalizeRateRange(question)
+  return question.min ?? 1
+}
+
+function getRateMax(question: QuestionSchemaItem) {
+  normalizeRateRange(question)
+  return question.max ?? getRateMin(question)
+}
+
+function getRateCount(question: QuestionSchemaItem) {
+  const min = getRateMin(question)
+  const max = getRateMax(question)
+  return Math.max(1, max - min + 1)
+}
+
+function updateRateMin(question: QuestionSchemaItem, value: number | undefined) {
+  const count = getRateCount(question)
+  const min = clampInt(value, 0, 100)
+  question.min = min
+  question.max = min + count - 1
+}
+
+function updateRateCount(question: QuestionSchemaItem, value: number | undefined) {
+  const count = clampInt(value, 1, 10)
+  const min = getRateMin(question)
+  question.max = min + count - 1
 }
 
 function getQuestionOptions(question: QuestionSchemaItem): QuestionOption[] {
@@ -225,7 +275,7 @@ onMounted(() => {
           <div>
             <h2 style="margin: 0;">编辑问卷</h2>
             <p style="margin: 8px 0 0; color: #666;">
-              当前问卷 ID：{{ surveyId }}
+              当前问卷ID：{{ surveyId }}
             </p>
           </div>          <div style="display: flex; align-items: center; gap: 16px;">
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -353,17 +403,39 @@ onMounted(() => {
                 </el-button>
               </div>
             </div>
-          </el-card>
-        </div>
 
-        <div style="margin-bottom: 24px;">
-          <div style="margin-bottom: 8px; font-weight: 600;">当前 Schema 预览</div>
-          <el-input
-            :model-value="schemaPreview"
-            type="textarea"
-            :rows="16"
-            readonly
-          />
+            <div
+              v-if="isRateQuestion(question)"
+              style="margin-top: 12px;"
+            >
+              <div style="margin-bottom: 8px; color: #666;">评分设置</div>
+              <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="color: #666;">起始分值</span>
+                  <el-input-number
+                    :model-value="getRateMin(question)"
+                    :min="0"
+                    :max="100"
+                    @update:model-value="(value) => updateRateMin(question, value)"
+                  />
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="color: #666;">选项数量</span>
+                  <el-input-number
+                    :model-value="getRateCount(question)"
+                    :min="1"
+                    :max="10"
+                    @update:model-value="(value) => updateRateCount(question, value)"
+                  />
+                </div>
+
+                <div style="color: #999;">
+                  最高分值：{{ getRateMax(question) }}
+                </div>
+              </div>
+            </div>
+          </el-card>
         </div>
 
         <div style="display: flex; gap: 12px;">

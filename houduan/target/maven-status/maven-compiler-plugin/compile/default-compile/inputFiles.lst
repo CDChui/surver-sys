@@ -12,6 +12,11 @@ D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\auth\dto\
 D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\auth\dto\LoginResponse.java
 D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\auth\dto\OauthCallbackRequest.java
 D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\auth\service\AuthService.java
+D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\dashboard\controller\DashboardController.java
+D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\dashboard\dto\DashboardResponse.java
+D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\dashboard\service\DashboardService.java
+D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\dashboard\service\DashboardServiceApi.java
+D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\dashboard\service\LocalDashboardService.java
 D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\log\controller\LogController.java
 D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\log\dto\CreateLogRequest.java
 D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\log\dto\LogItemResponse.java
@@ -32,6 +37,8 @@ D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\survey\dt
 D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\survey\dto\SurveyAuthUserDto.java
 D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\survey\dto\SurveyDetailResponse.java
 D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\survey\dto\SurveyListItemResponse.java
+D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\survey\dto\SurveyResponseItemResponse.java
+D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\survey\dto\SurveyResponseListResponse.java
 D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\survey\dto\SurveyStatsResponse.java
 D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\survey\dto\UpdateSurveyRequest.java
 D:\code\surver-sys\houduan\src\main\java\com\surver\sys\houduan\module\survey\model\SurveyModel.java

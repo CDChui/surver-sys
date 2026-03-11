@@ -42,6 +42,7 @@ public class SettingsController {
         result.put("systemName", settings.getOrDefault("systemName", ""));
         result.put("adminLogo", settings.getOrDefault("adminLogo", ""));
         result.put("userHomeLogo", settings.getOrDefault("userHomeLogo", ""));
+        result.put("titleLogo", settings.getOrDefault("titleLogo", ""));
         return ApiResponse.success(result);
     }
 

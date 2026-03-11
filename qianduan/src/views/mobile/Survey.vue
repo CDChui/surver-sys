@@ -21,10 +21,6 @@ const entryToken = ref('')
 
 const answers = reactive<Record<number, string | string[] | number>>({})
 
-const answerPreview = computed(() => {
-  return JSON.stringify(answers, null, 2)
-})
-
 const surveyId = computed(() => {
   const id = Number(route.params.id || 1)
   return Number.isNaN(id) ? 1 : id
@@ -192,7 +188,7 @@ function validateAnswers() {
       return false
     }
 
-    if (question.type === 'rate' && !value) {
+    if (question.type === 'rate' && (value === undefined || value === null || value === '')) {
       alert(`请完成题目：${question.title}`)
       return false
     }
@@ -315,6 +311,19 @@ function getRateText(value: number) {
   return `${value} 分`
 }
 
+function getRateScores(question: PublicSurveyResult['schema'][number]) {
+  const rawMin = typeof question.min === 'number' ? question.min : 1
+  const rawMax = typeof question.max === 'number' ? question.max : 5
+  const min = Number.isFinite(rawMin) ? Math.floor(rawMin) : 1
+  const max = Number.isFinite(rawMax) ? Math.floor(rawMax) : min + 4
+  const safeMax = Math.max(max, min)
+  const scores: number[] = []
+  for (let score = min; score <= safeMax; score += 1) {
+    scores.push(score)
+  }
+  return scores
+}
+
 watch(
   answers,
   () => {
@@ -435,7 +444,7 @@ onMounted(() => {
         <div v-else-if="question.type === 'rate'">
           <div style="display: flex; gap: 10px; flex-wrap: wrap;">
             <van-button
-              v-for="score in 5"
+              v-for="score in getRateScores(question)"
               :key="score"
               size="small"
               :type="answers[question.id] === score ? 'primary' : 'default'"
@@ -445,25 +454,6 @@ onMounted(() => {
             </van-button>
           </div>
         </div>
-      </div>
-
-      <div
-        style="
-          background: #fff;
-          border-radius: 12px;
-          padding: 20px;
-          margin-bottom: 16px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        "
-      >
-        <div style="margin-bottom: 8px; font-weight: 700;">当前答案预览</div>
-        <van-field
-          :model-value="answerPreview"
-          rows="10"
-          autosize
-          type="textarea"
-          readonly
-        />
       </div>
 
       <van-button

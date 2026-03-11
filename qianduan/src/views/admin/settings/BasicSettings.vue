@@ -1,16 +1,17 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { saveSystemSettings } from '../../../api/settings'
 import { useSettingsStore, type SystemSettings } from '../../../stores/settings'
 import { appendOperationLog } from '../../../utils/log'
 
-type LogoField = 'adminLogo' | 'userHomeLogo'
+type LogoField = 'adminLogo' | 'userHomeLogo' | 'titleLogo'
 
 const settingsStore = useSettingsStore()
 const MAX_LOGO_FILE_SIZE = 2 * 1024 * 1024
 
 const adminLogoInputRef = ref<HTMLInputElement>()
 const userHomeLogoInputRef = ref<HTMLInputElement>()
+const titleLogoInputRef = ref<HTMLInputElement>()
 
 const form = reactive({
   systemName: settingsStore.settings.systemName,
@@ -19,21 +20,30 @@ const form = reactive({
   enableLog: settingsStore.settings.enableLog,
   enableResumeDraft: settingsStore.settings.enableResumeDraft,
   adminLogo: settingsStore.settings.adminLogo || '',
-  userHomeLogo: settingsStore.settings.userHomeLogo || ''
+  userHomeLogo: settingsStore.settings.userHomeLogo || '',
+  titleLogo: settingsStore.settings.titleLogo || '',
+  systemLogKeepDays: settingsStore.settings.systemLogKeepDays,
+  systemLogKeepCount: settingsStore.settings.systemLogKeepCount,
+  userLogKeepDays: settingsStore.settings.userLogKeepDays,
+  userLogKeepCount: settingsStore.settings.userLogKeepCount
 })
 
 const logoPixelText = reactive<Record<LogoField, string>>({
   adminLogo: '未上传',
-  userHomeLogo: '未上传'
+  userHomeLogo: '未上传',
+  titleLogo: '未上传'
 })
 
 function getLogoRecommendSize(field: LogoField) {
   if (field === 'adminLogo') return '180 x 36 px'
-  return '240 x 48 px'
+  if (field === 'userHomeLogo') return '240 x 48 px'
+  return '32 x 32 px'
 }
 
 function getLogoInputRef(field: LogoField) {
-  return field === 'adminLogo' ? adminLogoInputRef.value : userHomeLogoInputRef.value
+  if (field === 'adminLogo') return adminLogoInputRef.value
+  if (field === 'userHomeLogo') return userHomeLogoInputRef.value
+  return titleLogoInputRef.value
 }
 
 function readFileAsDataUrl(file: File) {
@@ -81,7 +91,8 @@ async function updateLogoPixelText(field: LogoField, dataUrl: string) {
 async function syncLogoPixelText() {
   await Promise.all([
     updateLogoPixelText('adminLogo', form.adminLogo),
-    updateLogoPixelText('userHomeLogo', form.userHomeLogo)
+    updateLogoPixelText('userHomeLogo', form.userHomeLogo),
+    updateLogoPixelText('titleLogo', form.titleLogo)
   ])
 }
 
@@ -129,7 +140,12 @@ async function handleSave() {
     enableLog: form.enableLog,
     enableResumeDraft: form.enableResumeDraft,
     adminLogo: form.adminLogo.trim(),
-    userHomeLogo: form.userHomeLogo.trim()
+    userHomeLogo: form.userHomeLogo.trim(),
+    titleLogo: form.titleLogo.trim(),
+    systemLogKeepDays: form.systemLogKeepDays,
+    systemLogKeepCount: form.systemLogKeepCount,
+    userLogKeepDays: form.userLogKeepDays,
+    userLogKeepCount: form.userLogKeepCount
   }
 
   try {
@@ -185,9 +201,10 @@ onMounted(() => {
           <div class="basic-field page-size-field">
             <div class="field-label">默认分页条数</div>
             <el-select v-model="form.defaultPageSize" style="width: 100%;">
-              <el-option label="5 条/页" :value="5" />
               <el-option label="10 条/页" :value="10" />
               <el-option label="20 条/页" :value="20" />
+              <el-option label="50 条/页" :value="50" />
+              <el-option label="100 条/页" :value="100" />
             </el-select>
           </div>
         </div>
@@ -195,6 +212,57 @@ onMounted(() => {
         <section class="logo-section">
           <div class="field-label">Logo 设置</div>
           <div class="logo-grid">
+            <article class="logo-card">
+              <div class="logo-card-head">
+                <div>
+                  <div class="logo-title">网页标题 LOGO</div>
+                  <div class="logo-desc">显示位置：浏览器标签页</div>
+                </div>
+                <el-tag type="warning" effect="plain">
+                  推荐 {{ getLogoRecommendSize('titleLogo') }}
+                </el-tag>
+              </div>
+
+              <input
+                ref="titleLogoInputRef"
+                class="hidden-file-input"
+                type="file"
+                accept="image/*"
+                @change="(event) => handleLogoSelected(event, 'titleLogo')"
+              >
+
+              <div class="logo-dropzone" @click="triggerLogoUpload('titleLogo')">
+                <img
+                  v-if="form.titleLogo"
+                  :src="form.titleLogo"
+                  alt="网页标题 LOGO"
+                  class="logo-preview-image"
+                >
+                <div v-else class="logo-empty">
+                  <div class="logo-empty-title">点击上传网页标题 LOGO</div>
+                  <div class="logo-empty-tip">支持 PNG/JPG/SVG</div>
+                </div>
+              </div>
+
+              <div class="logo-meta-row">
+                <span>当前尺寸：{{ logoPixelText.titleLogo }}</span>
+                <span>最大：2MB</span>
+              </div>
+
+              <div class="logo-btn-row">
+                <el-button size="small" type="primary" plain @click="triggerLogoUpload('titleLogo')">
+                  选择图片
+                </el-button>
+                <el-button
+                  v-if="form.titleLogo"
+                  size="small"
+                  @click="clearLogo('titleLogo')"
+                >
+                  清除
+                </el-button>
+              </div>
+            </article>
+
             <article class="logo-card">
               <div class="logo-card-head">
                 <div>
@@ -310,6 +378,44 @@ onMounted(() => {
         </el-card>
 
         <el-card>
+          <div class="log-setting-title">日志保留策略</div>
+          <div class="log-setting-grid">
+            <div class="log-setting-item">
+              <div class="log-setting-name">系统日志</div>
+              <div class="log-setting-desc">系统管理员/业务管理员产生的日志</div>
+              <div class="log-setting-row">
+                <span class="log-setting-label">保留数量</span>
+                <el-input-number v-model="form.systemLogKeepCount" :min="0" :max="999999" />
+                <span class="log-setting-unit">条</span>
+              </div>
+              <div class="log-setting-row">
+                <span class="log-setting-label">保留时间</span>
+                <el-input-number v-model="form.systemLogKeepDays" :min="0" :max="3650" />
+                <span class="log-setting-unit">天</span>
+              </div>
+            </div>
+
+            <div class="log-setting-item">
+              <div class="log-setting-name">用户日志</div>
+              <div class="log-setting-desc">普通用户产生的日志</div>
+              <div class="log-setting-row">
+                <span class="log-setting-label">保留数量</span>
+                <el-input-number v-model="form.userLogKeepCount" :min="0" :max="999999" />
+                <span class="log-setting-unit">条</span>
+              </div>
+              <div class="log-setting-row">
+                <span class="log-setting-label">保留时间</span>
+                <el-input-number v-model="form.userLogKeepDays" :min="0" :max="3650" />
+                <span class="log-setting-unit">天</span>
+              </div>
+            </div>
+          </div>
+          <div class="log-setting-hint">
+            数量或时间设置为 0 表示不限制该维度。
+          </div>
+        </el-card>
+
+        <el-card>
           <div class="switch-row">
             <div>
               <div class="switch-title">启用移动端断点续答</div>
@@ -370,7 +476,7 @@ onMounted(() => {
 
 .logo-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -405,7 +511,7 @@ onMounted(() => {
 }
 
 .logo-dropzone {
-  min-height: 92px;
+  min-height: 84px;
   border: 1px dashed #b9c7dd;
   border-radius: 10px;
   background: #f6f9ff;
@@ -425,7 +531,7 @@ onMounted(() => {
 
 .logo-preview-image {
   max-width: 100%;
-  max-height: 58px;
+  max-height: 52px;
   object-fit: contain;
 }
 
@@ -479,22 +585,81 @@ onMounted(() => {
   color: #666;
 }
 
+.log-setting-title {
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.log-setting-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.log-setting-item {
+  border: 1px solid #e4eaf3;
+  border-radius: 12px;
+  padding: 14px;
+  background: #fbfcff;
+  display: grid;
+  gap: 10px;
+}
+
+.log-setting-name {
+  font-weight: 600;
+}
+
+.log-setting-desc {
+  color: #7b8698;
+  font-size: 12px;
+}
+
+.log-setting-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.log-setting-label {
+  width: 72px;
+  color: #4d5b70;
+}
+
+.log-setting-unit {
+  color: #7b8698;
+}
+
+.log-setting-hint {
+  margin-top: 12px;
+  color: #8a95a8;
+  font-size: 12px;
+}
+
 @media (max-width: 992px) {
   .basic-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .logo-grid {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .page-size-field {
     max-width: 100%;
   }
+
+  .log-setting-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 768px) {
   .basic-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .logo-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

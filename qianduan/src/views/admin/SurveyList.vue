@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
@@ -29,6 +29,8 @@ type SurveyStatus = 'DRAFT' | 'PUBLISHED' | 'CLOSED'
 type StatusFilter = 'ALL' | SurveyStatus
 
 type SurveyItem = SurveyListItemResult
+type SortOrder = 'ascending' | 'descending' | null
+type SortField = 'id' | 'title' | 'status' | 'createdAt'
 
 const keyword = ref('')
 const statusFilter = ref<StatusFilter>('ALL')
@@ -43,6 +45,10 @@ const linkSurveyTitle = ref('')
 const linkText = ref('')
 
 const surveyList = ref<SurveyItem[]>([])
+const sortState = ref<{ prop: SortField; order: SortOrder }>({
+  prop: 'createdAt',
+  order: 'descending'
+})
 
 const filteredSurveyList = computed(() => {
   const text = keyword.value.trim().toLowerCase()
@@ -66,10 +72,44 @@ const canManageSurveyAuth = computed(() => {
 
 const total = computed(() => filteredSurveyList.value.length)
 
+function parseDateValue(value: string) {
+  if (!value) return 0
+  const parsed = new Date(value.replace(' ', 'T')).getTime()
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function getSortValue(row: SurveyItem, prop: SortField) {
+  if (prop === 'createdAt') {
+    return parseDateValue(row.createdAt)
+  }
+  if (prop === 'id') {
+    return row.id
+  }
+  return String(row[prop] ?? '')
+}
+
+function compareValues(a: number | string, b: number | string) {
+  if (a === b) return 0
+  return a > b ? 1 : -1
+}
+
+const sortedSurveyList = computed(() => {
+  const { prop, order } = sortState.value
+  if (!order) {
+    return [...filteredSurveyList.value]
+  }
+  const factor = order === 'descending' ? -1 : 1
+  return [...filteredSurveyList.value].sort((a, b) => {
+    const left = getSortValue(a, prop)
+    const right = getSortValue(b, prop)
+    return compareValues(left, right) * factor
+  })
+})
+
 const pagedSurveyList = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
   const end = start + pageSize.value
-  return filteredSurveyList.value.slice(start, end)
+  return sortedSurveyList.value.slice(start, end)
 })
 
 watch([keyword, statusFilter], () => {
@@ -341,6 +381,15 @@ function handleSizeChange(size: number) {
   pageSize.value = size
 }
 
+function handleSortChange({ prop, order }: { prop: SortField; order: SortOrder }) {
+  if (!prop || !order) {
+    sortState.value = { prop: 'createdAt', order: 'descending' }
+  } else {
+    sortState.value = { prop, order }
+  }
+  currentPage.value = 1
+}
+
 onMounted(() => {
   void loadSurveyList()
 })
@@ -395,21 +444,26 @@ onMounted(() => {
     </el-card>
 
     <el-card v-loading="loading">
-      <el-table :data="pagedSurveyList" style="width: 100%">
-        <el-table-column prop="id" label="ID" width="150">
+      <el-table
+        :data="pagedSurveyList"
+        style="width: 100%"
+        :default-sort="{ prop: 'createdAt', order: 'descending' }"
+        @sort-change="handleSortChange"
+      >
+        <el-table-column prop="id" label="ID" width="150" sortable="custom">
           <template #default="scope">
             <span style="white-space: nowrap;">{{ scope.row.id }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="title" label="问卷标题" min-width="220" />
-        <el-table-column prop="status" label="状态" width="120">
+        <el-table-column prop="title" label="问卷标题" min-width="220" sortable="custom" />
+        <el-table-column prop="status" label="状态" width="120" sortable="custom">
           <template #default="scope">
             <el-tag :type="getStatusType(scope.row.status)">
               {{ getStatusText(scope.row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="创建时间" width="180" />
+        <el-table-column prop="createdAt" label="创建时间" width="180" sortable="custom" />
         <el-table-column label="操作" width="900">
           <template #default="scope">
             <el-button size="small" @click="handleEdit(scope.row)">

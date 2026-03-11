@@ -16,6 +16,7 @@ export interface PublicSystemBranding {
   systemName: string
   adminLogo: string
   userHomeLogo: string
+  titleLogo: string
 }
 
 export interface PublicAuthSettingsData {
@@ -49,7 +50,8 @@ export async function getPublicSystemBranding(): Promise<ApiResponse<PublicSyste
     data: {
       systemName: settingsStore.settings.systemName,
       adminLogo: settingsStore.settings.adminLogo,
-      userHomeLogo: settingsStore.settings.userHomeLogo
+      userHomeLogo: settingsStore.settings.userHomeLogo,
+      titleLogo: settingsStore.settings.titleLogo
     }
   }
 }

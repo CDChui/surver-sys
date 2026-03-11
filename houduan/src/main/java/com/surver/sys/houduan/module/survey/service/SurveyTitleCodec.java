@@ -2,12 +2,12 @@ package com.surver.sys.houduan.module.survey.service;
 
 import java.nio.charset.StandardCharsets;
 
-final class SurveyTitleCodec {
+public final class SurveyTitleCodec {
 
     private SurveyTitleCodec() {
     }
 
-    static String normalizeInputTitle(String rawTitle) {
+    public static String normalizeInputTitle(String rawTitle) {
         String normalized = rawTitle == null ? "" : rawTitle.trim();
         if (normalized.isBlank()) {
             return normalized;
@@ -17,7 +17,7 @@ final class SurveyTitleCodec {
         return repaired.trim();
     }
 
-    static String repairLegacyTitle(String rawTitle, Long surveyId) {
+    public static String repairLegacyTitle(String rawTitle, Long surveyId) {
         String normalized = rawTitle == null ? "" : rawTitle.trim();
         if (normalized.isBlank()) {
             return defaultTitle(surveyId);
@@ -33,7 +33,7 @@ final class SurveyTitleCodec {
         return repaired;
     }
 
-    static boolean isLikelyBrokenTitle(String title) {
+    public static boolean isLikelyBrokenTitle(String title) {
         if (title == null || title.isBlank()) {
             return true;
         }

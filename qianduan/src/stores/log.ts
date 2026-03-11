@@ -17,6 +17,8 @@ export interface LogItem {
   action: LogAction
   target: string
   createdAt: string
+  terminalType?: string
+  sourceIp?: string
 }
 
 const STORAGE_KEY = 'SYSTEM_LOG_LIST'

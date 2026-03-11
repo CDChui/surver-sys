@@ -1,0 +1,2 @@
+    throw new BizException(ErrorCode.INVALID_PARAM, "测试");
+line2

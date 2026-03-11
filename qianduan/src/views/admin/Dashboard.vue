@@ -1,49 +1,25 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
-import { useSurveyStore } from '../../stores/survey'
-import { useUserStore } from '../../stores/user'
+import {
+  getDashboard,
+  type DashboardDistributionItem,
+  type DashboardResult,
+  type DashboardTimelineItem,
+  type DashboardTrendRange
+} from '../../api/dashboard'
 
 type SurveyStatus = 'DRAFT' | 'PUBLISHED' | 'CLOSED'
-type TrendRange = 'today' | 'week' | 'month'
 type TimelineType = 'create' | 'publish' | 'close' | 'system'
 
-interface RankItem {
-  id: number
-  title: string
-  count: number
-  percent: number
-  rank: number
-}
+const loading = ref(false)
+const dashboard = ref<DashboardResult | null>(null)
 
-interface TimelineItem {
-  id: string
-  time: string
-  text: string
-  type: TimelineType
-}
-
-const surveyStore = useSurveyStore()
-const userStore = useUserStore()
-
-const surveyTotal = computed(() => surveyStore.surveyList.length)
-const publishedSurveyTotal = computed(() => {
-  return surveyStore.surveyList.filter((item) => item.status === 'PUBLISHED').length
-})
-const userTotal = computed(() => userStore.userList.length)
-const enabledUserTotal = computed(() => {
-  return userStore.userList.filter((item) => item.status === 'ENABLED').length
-})
-
-const recentSurveys = computed(() => {
-  return [...surveyStore.surveyList].sort((a, b) => b.id - a.id).slice(0, 6)
-})
-
-const trendRange = ref<TrendRange>('week')
-const trendRangeOptions: Array<{ label: string; value: TrendRange }> = [
+const trendRange = ref<DashboardTrendRange>('week')
+const trendRangeOptions: Array<{ label: string; value: DashboardTrendRange }> = [
   { label: '今日', value: 'today' },
-  { label: '本周', value: 'week' },
-  { label: '本月', value: 'month' }
+  { label: '近7天', value: 'week' },
+  { label: '近30天', value: 'month' }
 ]
 
 const trendChartRef = ref<HTMLDivElement | null>(null)
@@ -58,7 +34,7 @@ function pad2(n: number) {
   return String(n).padStart(2, '0')
 }
 
-function buildTrendAxis(range: TrendRange) {
+function buildTrendAxis(range: DashboardTrendRange) {
   if (range === 'today') {
     return Array.from({ length: 12 }, (_, index) => `${pad2(index * 2)}:00`)
   }
@@ -76,28 +52,61 @@ function buildTrendAxis(range: TrendRange) {
   return result
 }
 
-function buildTrendSeries(range: TrendRange) {
-  const axis = buildTrendAxis(range)
-  const base = Math.max(
-    16,
-    surveyTotal.value * 9 + publishedSurveyTotal.value * 15 + enabledUserTotal.value * 5
-  )
-
-  return axis.map((_, index) => {
-    if (range === 'today') {
-      return Math.max(
-        1,
-        Math.round((base / 18) * (0.65 + (Math.sin(index * 0.7) + 1) / 2))
-      )
-    }
-
-    const trendBoost = range === 'month' ? index * 0.3 : index * 0.9
-    return Math.max(
-      5,
-      Math.round(base * (0.42 + (Math.sin(index * 0.85) + 1) / 3) + trendBoost)
-    )
-  })
+const defaultTrend = {
+  today: {
+    axis: buildTrendAxis('today'),
+    values: Array.from({ length: 12 }, () => 0)
+  },
+  week: {
+    axis: buildTrendAxis('week'),
+    values: Array.from({ length: 7 }, () => 0)
+  },
+  month: {
+    axis: buildTrendAxis('month'),
+    values: Array.from({ length: 30 }, () => 0)
+  }
 }
+
+const defaultTerminalStats: DashboardDistributionItem[] = [
+  { name: '移动端', value: 0 },
+  { name: 'PC', value: 0 },
+  { name: '平板', value: 0 },
+  { name: '鸿蒙', value: 0 }
+]
+
+const defaultSourceStats: DashboardDistributionItem[] = [
+  { name: '微信', value: 0 },
+  { name: '直接链接', value: 0 }
+]
+
+const defaultTimeline: DashboardTimelineItem[] = [
+  {
+    id: 'system-default',
+    time: '刚刚',
+    text: '系统已就绪，等待新的问卷操作',
+    type: 'system'
+  }
+]
+
+const surveyTotal = computed(() => dashboard.value?.surveyTotal ?? 0)
+const publishedSurveyTotal = computed(() => dashboard.value?.publishedSurveyTotal ?? 0)
+const userTotal = computed(() => dashboard.value?.userTotal ?? 0)
+const enabledUserTotal = computed(() => dashboard.value?.enabledUserTotal ?? 0)
+const recentSurveys = computed(() => dashboard.value?.recentSurveys ?? [])
+const trendData = computed(() => dashboard.value?.trend ?? defaultTrend)
+const terminalStats = computed(() => {
+  const data = dashboard.value?.terminalStats ?? []
+  return data.length > 0 ? data : defaultTerminalStats
+})
+const sourceStats = computed(() => {
+  const data = dashboard.value?.sourceStats ?? []
+  return data.length > 0 ? data : defaultSourceStats
+})
+const hotSurveyRanking = computed(() => dashboard.value?.hotSurveyRanking ?? [])
+const operationTimeline = computed(() => {
+  const list = dashboard.value?.operationTimeline ?? []
+  return list.length > 0 ? list : defaultTimeline
+})
 
 function renderTrendChart() {
   if (!trendChartRef.value) return
@@ -106,8 +115,9 @@ function renderTrendChart() {
     trendChart = echarts.init(trendChartRef.value)
   }
 
-  const axisData = buildTrendAxis(trendRange.value)
-  const seriesData = buildTrendSeries(trendRange.value)
+  const rangeData = trendData.value[trendRange.value] || defaultTrend.week
+  const axisData = rangeData.axis
+  const seriesData = rangeData.values
   const isToday = trendRange.value === 'today'
 
   trendChart.setOption({
@@ -190,23 +200,6 @@ function renderTrendChart() {
   })
 }
 
-function getTerminalData() {
-  const mobile = Math.min(86, Math.max(52, 58 + publishedSurveyTotal.value * 4 - surveyTotal.value))
-  return [
-    { name: '手机端', value: mobile },
-    { name: '电脑端', value: 100 - mobile }
-  ]
-}
-
-function getSourceData() {
-  const raw = [
-    { name: '微信分享', value: 45 + publishedSurveyTotal.value * 3 },
-    { name: '直接链接访问', value: 34 + surveyTotal.value * 2 },
-    { name: '二维码扫描', value: 26 + enabledUserTotal.value * 2 }
-  ]
-  return raw
-}
-
 function renderTerminalChart() {
   if (!terminalChartRef.value) return
 
@@ -237,8 +230,8 @@ function renderTerminalChart() {
           borderColor: '#fff',
           borderWidth: 3
         },
-        color: ['#1d4ed8', '#60a5fa'],
-        data: getTerminalData()
+        color: ['#1d4ed8', '#60a5fa', '#93c5fd', '#22d3ee'],
+        data: terminalStats.value
       }
     ]
   })
@@ -271,8 +264,8 @@ function renderSourceChart() {
         label: {
           formatter: '{b}\n{d}%'
         },
-        color: ['#123b93', '#2f71e8', '#22d3ee'],
-        data: getSourceData()
+        color: ['#123b93', '#2f71e8'],
+        data: sourceStats.value
       }
     ]
   })
@@ -283,76 +276,6 @@ function renderAllCharts() {
   renderTerminalChart()
   renderSourceChart()
 }
-
-function getHeatCount(status: SurveyStatus, id: number, index: number) {
-  const tail = Number(String(id).slice(-3)) || (index + 1) * 17
-  const statusBoost = status === 'PUBLISHED' ? 240 : status === 'CLOSED' ? 140 : 95
-  return statusBoost + (tail % 180)
-}
-
-const hotSurveyRanking = computed<RankItem[]>(() => {
-  const rows = surveyStore.surveyList
-    .map((item, index) => ({
-      id: item.id,
-      title: item.title,
-      count: getHeatCount(item.status, item.id, index)
-    }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5)
-
-  const max = rows[0]?.count || 1
-
-  return rows.map((item, index) => ({
-    ...item,
-    rank: index + 1,
-    percent: Math.max(8, Math.round((item.count / max) * 100))
-  }))
-})
-
-const operationTimeline = computed<TimelineItem[]>(() => {
-  const events: TimelineItem[] = []
-  const topSurveys = [...surveyStore.surveyList].sort((a, b) => b.id - a.id).slice(0, 6)
-
-  topSurveys.forEach((survey) => {
-    const time = survey.createdAt || '刚刚'
-
-    events.push({
-      id: `create-${survey.id}`,
-      time,
-      text: `管理员创建了《${survey.title}》`,
-      type: 'create'
-    })
-
-    if (survey.status === 'PUBLISHED') {
-      events.push({
-        id: `publish-${survey.id}`,
-        time,
-        text: `《${survey.title}》已发布并开始回收答卷`,
-        type: 'publish'
-      })
-    }
-
-    if (survey.status === 'CLOSED') {
-      events.push({
-        id: `close-${survey.id}`,
-        time,
-        text: `《${survey.title}》已收集满额并自动结束`,
-        type: 'close'
-      })
-    }
-  })
-
-  if (events.length === 0) {
-    events.push({
-      id: 'system-default',
-      time: '刚刚',
-      text: '系统已就绪，等待新的问卷操作动态',
-      type: 'system'
-    })
-  }
-
-  return events.slice(0, 6)
-})
 
 function getStatusText(status: SurveyStatus) {
   if (status === 'DRAFT') return '草稿'
@@ -387,18 +310,33 @@ function handleResize() {
   sourceChart?.resize()
 }
 
-watch(
-  [trendRange, surveyTotal, publishedSurveyTotal, enabledUserTotal],
-  async () => {
+async function loadDashboard() {
+  try {
+    loading.value = true
+    const response = await getDashboard()
+
+    if (response.code !== 20000) {
+      alert(response.message || '加载数据看板失败')
+      return
+    }
+
+    dashboard.value = response.data
+  } catch (error) {
+    alert('加载数据看板失败')
+  } finally {
+    loading.value = false
     await nextTick()
     renderAllCharts()
-  },
-  { deep: true }
-)
+  }
+}
 
-onMounted(async () => {
+watch([trendRange, dashboard], async () => {
   await nextTick()
   renderAllCharts()
+})
+
+onMounted(async () => {
+  await loadDashboard()
   window.addEventListener('resize', handleResize)
 })
 
@@ -416,7 +354,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div>
+  <div v-loading="loading">
     <div
       style="
         display: grid;
@@ -488,20 +426,20 @@ onUnmounted(() => {
 
       <el-card>
         <template #header>
-          <div style="font-weight: 700;">访问终端与来源分析</div>
+          <div style="font-weight: 700;">访问终端与来源分布</div>
         </template>
 
         <div style="display: grid; gap: 12px;">
           <div>
             <div style="font-size: 14px; color: #666; margin-bottom: 6px;">
-              终端占比：手机端 vs 电脑端
+              终端占比：移动端 / PC / 平板 / 鸿蒙
             </div>
             <div ref="terminalChartRef" style="height: 190px;" />
           </div>
 
           <div>
             <div style="font-size: 14px; color: #666; margin-bottom: 6px;">
-              来源占比：微信 / 直接链接 / 二维码
+              来源占比：微信 / 直接链接
             </div>
             <div ref="sourceChartRef" style="height: 190px;" />
           </div>
@@ -539,7 +477,7 @@ onUnmounted(() => {
       <div style="display: flex; flex-direction: column; gap: 16px;">
         <el-card>
           <template #header>
-            <div style="font-weight: 700;">热门问卷排行（Top 5）</div>
+            <div style="font-weight: 700;">热门问卷排行（前 5）</div>
           </template>
 
           <div v-if="hotSurveyRanking.length > 0">

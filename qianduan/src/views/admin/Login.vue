@@ -148,7 +148,7 @@ function handleThirdPartyLogin() {
         </div>
 
         <div v-if="!isRealApi" class="mock-tip">
-          mock 账号：`admin` / `teacher01` / `student01`，密码统一 `123456`
+          测试账号：`admin` / `teacher01` / `student01`，密码统一 `123456`
         </div>
 
         <el-button

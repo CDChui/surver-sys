@@ -107,6 +107,11 @@ public class LocalSettingsService implements SettingsServiceApi {
         root.put("allowDuplicateSubmit", false);
         root.put("adminLogo", "");
         root.put("userHomeLogo", "");
+        root.put("titleLogo", "");
+        root.put("systemLogKeepDays", 180);
+        root.put("systemLogKeepCount", 1000);
+        root.put("userLogKeepDays", 90);
+        root.put("userLogKeepCount", 2000);
 
         Map<String, Object> oauth = new LinkedHashMap<>();
         oauth.put("enabled", false);

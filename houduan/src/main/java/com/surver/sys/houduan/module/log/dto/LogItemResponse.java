@@ -6,6 +6,8 @@ public record LogItemResponse(
         String module,
         String action,
         String target,
-        String createdAt
+        String createdAt,
+        String terminalType,
+        String sourceIp
 ) {
 }

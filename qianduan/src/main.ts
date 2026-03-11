@@ -27,19 +27,20 @@ app.use(Vant)
 async function bootstrapSystemSettings() {
   if (!USE_REAL_API) return
 
-  const authStore = useAuthStore(pinia)
-  if (!authStore.token) return
-
   const settingsStore = useSettingsStore(pinia)
+  const authStore = useAuthStore(pinia)
+  const hasToken = Boolean(authStore.token)
 
-  try {
-    const response = await getSystemSettings()
-    if (response.code === 20000 && response.data) {
-      settingsStore.saveSettings(response.data)
-      return
+  if (hasToken) {
+    try {
+      const response = await getSystemSettings()
+      if (response.code === 20000 && response.data) {
+        settingsStore.saveSettings(response.data)
+        return
+      }
+    } catch (error) {
+      // for non-admin users fallback to public branding settings
     }
-  } catch (error) {
-    // for non-admin users fallback to public branding settings
   }
 
   try {
@@ -49,7 +50,8 @@ async function bootstrapSystemSettings() {
         ...settingsStore.settings,
         systemName: brandingResponse.data.systemName || settingsStore.settings.systemName,
         adminLogo: brandingResponse.data.adminLogo || '',
-        userHomeLogo: brandingResponse.data.userHomeLogo || ''
+        userHomeLogo: brandingResponse.data.userHomeLogo || '',
+        titleLogo: brandingResponse.data.titleLogo || ''
       })
     }
   } catch (error) {

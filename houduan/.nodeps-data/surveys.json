@@ -1,5 +1,5 @@
 {
-  "nextSurveyId" : 1020,
+  "nextSurveyId" : 1021,
   "surveys" : [ {
     "id" : 1001,
     "title" : "persist-check-20260308233248",
@@ -121,7 +121,7 @@
     "status" : "PUBLISHED",
     "creatorId" : 1,
     "createdAt" : "2026-03-09 00:27:05",
-    "allowDuplicateSubmit" : true,
+    "allowDuplicateSubmit" : false,
     "quotaEnabled" : false,
     "quotaTotal" : null,
     "schema" : [ {
@@ -524,8 +524,129 @@
       "required" : true
     } ],
     "authUsers" : [ ]
+  }, {
+    "id" : 1021,
+    "title" : "测试0310-1",
+    "description" : "测试",
+    "status" : "PUBLISHED",
+    "creatorId" : 1,
+    "createdAt" : "2026-03-10 12:10:44",
+    "allowDuplicateSubmit" : false,
+    "quotaEnabled" : false,
+    "quotaTotal" : null,
+    "schema" : [ {
+      "id" : 1773115828458,
+      "type" : "single",
+      "title" : "请填写单选题标题",
+      "required" : true,
+      "options" : [ {
+        "id" : 1773115827992,
+        "label" : "选项1"
+      }, {
+        "id" : 1773115827993,
+        "label" : "选项2"
+      }, {
+        "id" : 1773115834219,
+        "label" : "选项3"
+      }, {
+        "id" : 1773115834701,
+        "label" : "选项4"
+      } ]
+    }, {
+      "id" : 1773115829049,
+      "type" : "multi",
+      "title" : "请填写多选题标题",
+      "required" : false,
+      "options" : [ {
+        "id" : 1773115828672,
+        "label" : "选项1"
+      }, {
+        "id" : 1773115828673,
+        "label" : "选项2"
+      }, {
+        "id" : 1773115838765,
+        "label" : "选项3"
+      }, {
+        "id" : 1773115838551,
+        "label" : "选项4"
+      } ]
+    }, {
+      "id" : 1773115830044,
+      "type" : "text",
+      "title" : "请填写填空题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1773115830429,
+      "type" : "textarea",
+      "title" : "请填写简答题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1773115831410,
+      "type" : "rate",
+      "title" : "请填写评分题标题",
+      "required" : false,
+      "options" : [ ]
+    } ],
+    "authUsers" : [ ]
   } ],
   "answers" : [ {
+    "surveyId" : 1003,
+    "userId" : 17,
+    "username" : "user01",
+    "realName" : "测试",
+    "surveyTitleSnapshot" : "测试",
+    "surveyDescriptionSnapshot" : "test",
+    "surveySchemaSnapshot" : [ {
+      "id" : 1772985390341,
+      "type" : "single",
+      "title" : "请填写单选题标题",
+      "required" : true,
+      "options" : [ {
+        "id" : 1772985389758,
+        "label" : "选项1"
+      }, {
+        "id" : 1772985389759,
+        "label" : "选项2"
+      } ]
+    }, {
+      "id" : 1772985390167,
+      "type" : "multi",
+      "title" : "请填写多选题标题",
+      "required" : false,
+      "options" : [ {
+        "id" : 1772985390138,
+        "label" : "选项1"
+      }, {
+        "id" : 1772985390139,
+        "label" : "选项2"
+      } ]
+    }, {
+      "id" : 1772985390854,
+      "type" : "text",
+      "title" : "请填写填空题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1772985391085,
+      "type" : "textarea",
+      "title" : "请填写简答题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1772985392165,
+      "type" : "rate",
+      "title" : "请填写评分题标题",
+      "required" : false,
+      "options" : [ ]
+    } ],
+    "answers" : {
+      "1772985390341" : "选项1",
+      "1772985390167" : [ "选项1" ]
+    },
+    "submitTime" : "2026-03-10 09:37:21"
+  }, {
     "surveyId" : 1018,
     "userId" : 19,
     "username" : "user02",
@@ -577,5 +698,215 @@
       "q1" : "answer-20260310001702"
     },
     "submitTime" : "2026-03-10 00:17:02"
+  }, {
+    "surveyId" : 1021,
+    "userId" : 17,
+    "username" : "user01",
+    "realName" : "测试",
+    "surveyTitleSnapshot" : "测试0310-1",
+    "surveyDescriptionSnapshot" : "测试",
+    "surveySchemaSnapshot" : [ {
+      "id" : 1773115828458,
+      "type" : "single",
+      "title" : "请填写单选题标题",
+      "required" : true,
+      "options" : [ {
+        "id" : 1773115827992,
+        "label" : "选项1"
+      }, {
+        "id" : 1773115827993,
+        "label" : "选项2"
+      }, {
+        "id" : 1773115834219,
+        "label" : "选项3"
+      }, {
+        "id" : 1773115834701,
+        "label" : "选项4"
+      } ]
+    }, {
+      "id" : 1773115829049,
+      "type" : "multi",
+      "title" : "请填写多选题标题",
+      "required" : false,
+      "options" : [ {
+        "id" : 1773115828672,
+        "label" : "选项1"
+      }, {
+        "id" : 1773115828673,
+        "label" : "选项2"
+      }, {
+        "id" : 1773115838765,
+        "label" : "选项3"
+      }, {
+        "id" : 1773115838551,
+        "label" : "选项4"
+      } ]
+    }, {
+      "id" : 1773115830044,
+      "type" : "text",
+      "title" : "请填写填空题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1773115830429,
+      "type" : "textarea",
+      "title" : "请填写简答题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1773115831410,
+      "type" : "rate",
+      "title" : "请填写评分题标题",
+      "required" : false,
+      "options" : [ ]
+    } ],
+    "answers" : {
+      "1773115828458" : "选项2",
+      "1773115829049" : [ "选项1", "选项3" ],
+      "1773115830044" : "测试",
+      "1773115830429" : "车is",
+      "1773115831410" : 5
+    },
+    "submitTime" : "2026-03-10 15:25:23"
+  }, {
+    "surveyId" : 1021,
+    "userId" : 19,
+    "username" : "user02",
+    "realName" : "测试2",
+    "surveyTitleSnapshot" : "测试0310-1",
+    "surveyDescriptionSnapshot" : "测试",
+    "surveySchemaSnapshot" : [ {
+      "id" : 1773115828458,
+      "type" : "single",
+      "title" : "请填写单选题标题",
+      "required" : true,
+      "options" : [ {
+        "id" : 1773115827992,
+        "label" : "选项1"
+      }, {
+        "id" : 1773115827993,
+        "label" : "选项2"
+      }, {
+        "id" : 1773115834219,
+        "label" : "选项3"
+      }, {
+        "id" : 1773115834701,
+        "label" : "选项4"
+      } ]
+    }, {
+      "id" : 1773115829049,
+      "type" : "multi",
+      "title" : "请填写多选题标题",
+      "required" : false,
+      "options" : [ {
+        "id" : 1773115828672,
+        "label" : "选项1"
+      }, {
+        "id" : 1773115828673,
+        "label" : "选项2"
+      }, {
+        "id" : 1773115838765,
+        "label" : "选项3"
+      }, {
+        "id" : 1773115838551,
+        "label" : "选项4"
+      } ]
+    }, {
+      "id" : 1773115830044,
+      "type" : "text",
+      "title" : "请填写填空题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1773115830429,
+      "type" : "textarea",
+      "title" : "请填写简答题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1773115831410,
+      "type" : "rate",
+      "title" : "请填写评分题标题",
+      "required" : false,
+      "options" : [ ]
+    } ],
+    "answers" : {
+      "1773115828458" : "选项4",
+      "1773115829049" : [ "选项1", "选项2" ],
+      "1773115830044" : "成都市",
+      "1773115830429" : "收到",
+      "1773115831410" : 4
+    },
+    "submitTime" : "2026-03-10 15:26:12"
+  }, {
+    "surveyId" : 1021,
+    "userId" : 20,
+    "username" : "user03",
+    "realName" : "测试",
+    "surveyTitleSnapshot" : "测试0310-1",
+    "surveyDescriptionSnapshot" : "测试",
+    "surveySchemaSnapshot" : [ {
+      "id" : 1773115828458,
+      "type" : "single",
+      "title" : "请填写单选题标题",
+      "required" : true,
+      "options" : [ {
+        "id" : 1773115827992,
+        "label" : "选项1"
+      }, {
+        "id" : 1773115827993,
+        "label" : "选项2"
+      }, {
+        "id" : 1773115834219,
+        "label" : "选项3"
+      }, {
+        "id" : 1773115834701,
+        "label" : "选项4"
+      } ]
+    }, {
+      "id" : 1773115829049,
+      "type" : "multi",
+      "title" : "请填写多选题标题",
+      "required" : false,
+      "options" : [ {
+        "id" : 1773115828672,
+        "label" : "选项1"
+      }, {
+        "id" : 1773115828673,
+        "label" : "选项2"
+      }, {
+        "id" : 1773115838765,
+        "label" : "选项3"
+      }, {
+        "id" : 1773115838551,
+        "label" : "选项4"
+      } ]
+    }, {
+      "id" : 1773115830044,
+      "type" : "text",
+      "title" : "请填写填空题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1773115830429,
+      "type" : "textarea",
+      "title" : "请填写简答题标题",
+      "required" : false,
+      "options" : [ ]
+    }, {
+      "id" : 1773115831410,
+      "type" : "rate",
+      "title" : "请填写评分题标题",
+      "required" : false,
+      "options" : [ ]
+    } ],
+    "answers" : {
+      "1773115828458" : "选项3",
+      "1773115829049" : [ "选项3", "选项4", "选项2", "选项1" ],
+      "1773115830044" : "方式",
+      "1773115830429" : "啊时代发生的",
+      "1773115831410" : 2
+    },
+    "submitTime" : "2026-03-10 15:26:41"
   } ]
 }

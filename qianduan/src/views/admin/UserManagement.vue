@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import {
@@ -21,6 +21,8 @@ type RoleFilter = 'ALL' | UserRole
 type StatusFilter = 'ALL' | UserStatus
 type AccountTypeFilter = 'LOCAL' | 'THIRD_PARTY'
 type UserRow = UserItemResult
+type SortOrder = 'ascending' | 'descending' | null
+type SortField = 'id' | 'username' | 'realName' | 'remark' | 'role' | 'status' | 'createdAt' | 'localAccount'
 
 const userStore = useUserStore()
 
@@ -44,6 +46,10 @@ const editIsLocalAccount = ref(true)
 const resetTargetUser = ref<UserRow | null>(null)
 
 const userList = ref<UserRow[]>([])
+const sortState = ref<{ prop: SortField; order: SortOrder }>({
+  prop: 'createdAt',
+  order: 'descending'
+})
 const createForm = reactive<CreateUserParams>({
   username: '',
   realName: '',
@@ -96,10 +102,47 @@ const filteredUserList = computed(() => {
 
 const total = computed(() => filteredUserList.value.length)
 
+function parseDateValue(value: string) {
+  if (!value) return 0
+  const parsed = new Date(value.replace(' ', 'T')).getTime()
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function getSortValue(row: UserRow, prop: SortField) {
+  if (prop === 'createdAt') {
+    return parseDateValue(row.createdAt)
+  }
+  if (prop === 'id') {
+    return row.id
+  }
+  if (prop === 'localAccount') {
+    return row.localAccount ? 1 : 0
+  }
+  return String(row[prop] ?? '')
+}
+
+function compareValues(a: number | string, b: number | string) {
+  if (a === b) return 0
+  return a > b ? 1 : -1
+}
+
+const sortedUserList = computed(() => {
+  const { prop, order } = sortState.value
+  if (!order) {
+    return [...filteredUserList.value]
+  }
+  const factor = order === 'descending' ? -1 : 1
+  return [...filteredUserList.value].sort((a, b) => {
+    const left = getSortValue(a, prop)
+    const right = getSortValue(b, prop)
+    return compareValues(left, right) * factor
+  })
+})
+
 const pagedUserList = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
   const end = start + pageSize.value
-  return filteredUserList.value.slice(start, end)
+  return sortedUserList.value.slice(start, end)
 })
 
 watch([keyword, roleFilter, statusFilter, accountTypeFilter], () => {
@@ -430,6 +473,15 @@ function handleSizeChange(size: number) {
   pageSize.value = size
 }
 
+function handleSortChange({ prop, order }: { prop: SortField; order: SortOrder }) {
+  if (!prop || !order) {
+    sortState.value = { prop: 'createdAt', order: 'descending' }
+  } else {
+    sortState.value = { prop, order }
+  }
+  currentPage.value = 1
+}
+
 onMounted(() => {
   void loadUserList()
 })
@@ -526,31 +578,36 @@ onMounted(() => {
       </el-card>
 
       <el-card v-loading="loading">
-        <el-table :data="pagedUserList" style="width: 100%">
-          <el-table-column prop="id" label="ID" width="90" />
-          <el-table-column prop="username" label="账号" width="180" />
-          <el-table-column prop="realName" label="名称" width="160" />
-          <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip />
-          <el-table-column label="用户类型" width="120">
+        <el-table
+          :data="pagedUserList"
+          style="width: 100%"
+          :default-sort="{ prop: 'createdAt', order: 'descending' }"
+          @sort-change="handleSortChange"
+        >
+          <el-table-column prop="id" label="ID" width="90" sortable="custom" />
+          <el-table-column prop="username" label="账号" width="180" sortable="custom" />
+          <el-table-column prop="realName" label="名称" width="160" sortable="custom" />
+          <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip sortable="custom" />
+          <el-table-column prop="localAccount" label="用户类型" width="120" sortable="custom">
             <template #default="scope">
               <el-tag :type="scope.row.localAccount ? 'success' : 'info'">
                 {{ getAccountTypeText(scope.row.localAccount) }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="role" label="角色" width="140">
+          <el-table-column prop="role" label="角色" width="140" sortable="custom">
             <template #default="scope">
               {{ getRoleText(scope.row.role) }}
             </template>
           </el-table-column>
-          <el-table-column prop="status" label="状态" width="120">
+          <el-table-column prop="status" label="状态" width="120" sortable="custom">
             <template #default="scope">
               <el-tag :type="getStatusType(scope.row.status)">
                 {{ getStatusText(scope.row.status) }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="createdAt" label="创建时间" width="170" />
+          <el-table-column prop="createdAt" label="创建时间" width="170" sortable="custom" />
           <el-table-column label="操作" width="420">
             <template #default="scope">
               <el-button size="small" @click="handleOpenEdit(scope.row)">

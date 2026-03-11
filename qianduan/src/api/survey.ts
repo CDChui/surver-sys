@@ -24,6 +24,8 @@ export interface QuestionSchemaItem {
   title: string
   required: boolean
   options: QuestionOption[]
+  min?: number
+  max?: number
 }
 
 export interface CreateSurveyDraftParams {
@@ -97,6 +99,7 @@ export interface SurveyStatsResult {
   id: number
   title: string
   description: string
+  responseCount: number
   schema: QuestionSchemaItem[]
   statsList: SurveyStatsItem[]
 }
@@ -126,6 +129,25 @@ export interface MySurveySubmissionDetailResult {
   schema: QuestionSchemaItem[]
   answers: Record<string, string | string[] | number>
   submitTime: string
+}
+
+export interface SurveyResponseItemResult {
+  userId: number
+  account: string
+  username: string
+  submitTime: string
+  terminalType: string
+  sourceType?: string
+  sourceIp: string
+  answers: Record<string, string | string[] | number>
+}
+
+export interface SurveyResponseListResult {
+  surveyId: number
+  surveyTitle: string
+  surveyDescription: string
+  schema: QuestionSchemaItem[]
+  responses: SurveyResponseItemResult[]
 }
 
 interface SubmittedSnapshotStorage {
@@ -362,19 +384,23 @@ function buildMockStats(questions: QuestionSchemaItem[]): SurveyStatsItem[] {
     }
 
     if (question.type === 'rate') {
+      const min = typeof question.min === 'number' ? question.min : 1
+      const max = typeof question.max === 'number' ? question.max : 5
+      const safeMin = Number.isFinite(min) ? Math.floor(min) : 1
+      const safeMax = Number.isFinite(max) ? Math.max(Math.floor(max), safeMin) : safeMin + 4
+      const rateStats = []
+      for (let score = safeMin; score <= safeMax; score += 1) {
+        rateStats.push({ score, count: (score - safeMin + 1) * 3 })
+      }
+      const avgScore =
+        rateStats.length > 0 ? Number(((safeMin + safeMax) / 2).toFixed(2)) : 0
       return {
         id: question.id,
         title: question.title,
         type: question.type,
         required: question.required,
-        avgScore: 4.2,
-        rateStats: [
-          { score: 1, count: 1 },
-          { score: 2, count: 2 },
-          { score: 3, count: 6 },
-          { score: 4, count: 10 },
-          { score: 5, count: 13 }
-        ]
+        avgScore,
+        rateStats
       }
     }
 
@@ -387,19 +413,26 @@ function buildMockStats(questions: QuestionSchemaItem[]): SurveyStatsItem[] {
   })
 }
 
-function buildMockSubmissionRows(survey: SurveyDetailResult) {
+type MockSubmissionRecord = {
+  submitTime: string
+  account: string
+  username: string
+  answers: Record<string, string | string[] | number>
+}
+
+function buildMockSubmissionRecords(survey: SurveyDetailResult): MockSubmissionRecord[] {
   const questionMap = survey.schema
 
-  const mockUsers = [
+  return [
     {
       submitTime: '2026-03-08 09:10:22',
       account: 'student01',
       username: '王同学',
       answers: {
-        [questionMap[0]?.id ?? 0]: '红色',
-        [questionMap[1]?.id ?? 0]: ['选项1', '选项3'],
-        [questionMap[2]?.id ?? 0]: 4,
-        [questionMap[3]?.id ?? 0]: '这里是第一位用户的填空内容'
+        [String(questionMap[0]?.id ?? 0)]: '红色',
+        [String(questionMap[1]?.id ?? 0)]: ['选项1', '选项3'],
+        [String(questionMap[2]?.id ?? 0)]: 4,
+        [String(questionMap[3]?.id ?? 0)]: '这里是第一位用户的填空内容'
       }
     },
     {
@@ -407,10 +440,10 @@ function buildMockSubmissionRows(survey: SurveyDetailResult) {
       account: 'student02',
       username: '赵同学',
       answers: {
-        [questionMap[0]?.id ?? 0]: '黄色',
-        [questionMap[1]?.id ?? 0]: ['选项2'],
-        [questionMap[2]?.id ?? 0]: 5,
-        [questionMap[3]?.id ?? 0]: '这里是第二位用户的填空内容'
+        [String(questionMap[0]?.id ?? 0)]: '黄色',
+        [String(questionMap[1]?.id ?? 0)]: ['选项2'],
+        [String(questionMap[2]?.id ?? 0)]: 5,
+        [String(questionMap[3]?.id ?? 0)]: '这里是第二位用户的填空内容'
       }
     },
     {
@@ -418,15 +451,17 @@ function buildMockSubmissionRows(survey: SurveyDetailResult) {
       account: 'student03',
       username: '李同学',
       answers: {
-        [questionMap[0]?.id ?? 0]: '蓝色',
-        [questionMap[1]?.id ?? 0]: ['选项1', '选项2', '选项4'],
-        [questionMap[2]?.id ?? 0]: 3,
-        [questionMap[3]?.id ?? 0]: '这里是第三位用户的填空内容'
+        [String(questionMap[0]?.id ?? 0)]: '蓝色',
+        [String(questionMap[1]?.id ?? 0)]: ['选项1', '选项2', '选项4'],
+        [String(questionMap[2]?.id ?? 0)]: 3,
+        [String(questionMap[3]?.id ?? 0)]: '这里是第三位用户的填空内容'
       }
     }
   ]
+}
 
-  return mockUsers.map((user) => {
+function buildMockSubmissionRows(survey: SurveyDetailResult) {
+  return buildMockSubmissionRecords(survey).map((user) => {
     const row: Record<string, string | number> = {
       '提交时间': user.submitTime,
       '账号': user.account,
@@ -434,7 +469,7 @@ function buildMockSubmissionRows(survey: SurveyDetailResult) {
     }
 
     survey.schema.forEach((question) => {
-      const rawValue = user.answers[question.id as keyof typeof user.answers]
+      const rawValue = user.answers[String(question.id)]
 
       if (Array.isArray(rawValue)) {
         row[question.title] = rawValue.join('、')
@@ -769,6 +804,7 @@ export async function getSurveyStats(
           id: target.id,
           title: target.title,
           description: target.description,
+          responseCount: buildMockSubmissionRecords(target).length,
           schema: target.schema,
           statsList: buildMockStats(target.schema)
         }
@@ -851,6 +887,58 @@ export async function getPublicSurvey(
       })
     }, 500)
   })
+}
+
+export async function getSurveyResponses(
+  id: number
+): Promise<ApiResponse<SurveyResponseListResult>> {
+  if (USE_REAL_API) {
+    return request.get(`/surveys/${id}/responses`)
+  }
+
+  try {
+    const detailResponse = await getSurveyDetail(id)
+    if (detailResponse.code !== 20000) {
+      return {
+        code: detailResponse.code,
+        message: detailResponse.message,
+        data: null as unknown as SurveyResponseListResult
+      }
+    }
+
+    const survey = detailResponse.data
+    const mockTerminalTypes = ['移动端', 'PC', '平板']
+    const mockIps = ['192.168.1.22', '10.0.0.15', '172.16.2.8']
+    const mockSources = ['微信', '直接链接']
+    const responses = buildMockSubmissionRecords(survey).map((record, index) => ({
+      userId: index + 1,
+      account: record.account,
+      username: record.username,
+      submitTime: record.submitTime,
+      terminalType: mockTerminalTypes[index % mockTerminalTypes.length],
+      sourceType: mockSources[index % mockSources.length],
+      sourceIp: mockIps[index % mockIps.length],
+      answers: record.answers
+    }))
+
+    return {
+      code: 20000,
+      message: 'success',
+      data: {
+        surveyId: survey.id,
+        surveyTitle: survey.title,
+        surveyDescription: survey.description,
+        schema: survey.schema,
+        responses
+      }
+    }
+  } catch (error) {
+    return {
+      code: 40404,
+      message: '问卷不存在',
+      data: null as unknown as SurveyResponseListResult
+    }
+  }
 }
 
 export async function submitSurvey(

@@ -55,6 +55,11 @@ export interface SystemSettings {
   allowDuplicateSubmit: boolean
   adminLogo: string
   userHomeLogo: string
+  titleLogo: string
+  systemLogKeepDays: number
+  systemLogKeepCount: number
+  userLogKeepDays: number
+  userLogKeepCount: number
   oauth: OauthSettings
   authIntegration: AuthIntegrationSettings
 }
@@ -171,12 +176,17 @@ function getDefaultSettings(): SystemSettings {
   return {
     systemName: '问卷调查系统',
     systemDomain: '',
-    defaultPageSize: 5,
+    defaultPageSize: 20,
     enableLog: true,
     enableResumeDraft: true,
     allowDuplicateSubmit: false,
     adminLogo: '',
     userHomeLogo: '',
+    titleLogo: '',
+    systemLogKeepDays: 180,
+    systemLogKeepCount: 1000,
+    userLogKeepDays: 90,
+    userLogKeepCount: 2000,
     oauth: getDefaultOauthSettings(),
     authIntegration: getDefaultAuthIntegration()
   }
@@ -209,6 +219,14 @@ function normalizeRole(value: unknown): UserRole {
 function normalizeLogoValue(value: unknown): string {
   if (typeof value !== 'string') return ''
   return value.trim()
+}
+
+function normalizeNumber(value: unknown, fallback: number) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  const parsed = Number.parseInt(String(value), 10)
+  return Number.isFinite(parsed) ? parsed : fallback
 }
 
 function normalizeProvider(
@@ -394,6 +412,11 @@ function normalizeSettings(rawSettings: unknown): SystemSettings {
     ...candidate,
     adminLogo: normalizeLogoValue(candidate.adminLogo),
     userHomeLogo: normalizeLogoValue(candidate.userHomeLogo),
+    titleLogo: normalizeLogoValue(candidate.titleLogo),
+    systemLogKeepDays: normalizeNumber(candidate.systemLogKeepDays, defaults.systemLogKeepDays),
+    systemLogKeepCount: normalizeNumber(candidate.systemLogKeepCount, defaults.systemLogKeepCount),
+    userLogKeepDays: normalizeNumber(candidate.userLogKeepDays, defaults.userLogKeepDays),
+    userLogKeepCount: normalizeNumber(candidate.userLogKeepCount, defaults.userLogKeepCount),
     oauth: convertAuthIntegrationToLegacyOauth(authIntegration),
     authIntegration
   }

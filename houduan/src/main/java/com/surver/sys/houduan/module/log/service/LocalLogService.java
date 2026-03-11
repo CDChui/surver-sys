@@ -4,9 +4,16 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.surver.sys.houduan.module.log.dto.CreateLogRequest;
 import com.surver.sys.houduan.module.log.dto.LogItemResponse;
+import com.surver.sys.houduan.module.settings.service.SettingsServiceApi;
+import com.surver.sys.houduan.module.user.model.UserModel;
+import com.surver.sys.houduan.module.user.service.UserServiceApi;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
@@ -15,8 +22,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -27,31 +36,55 @@ public class LocalLogService implements LogServiceApi {
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final Path LOG_STORE_FILE = Path.of(".nodeps-data", "logs.json").toAbsolutePath().normalize();
     private static final Path LEGACY_LOG_STORE_FILE = Path.of("..", ".nodeps-data", "logs.json").toAbsolutePath().normalize();
+    private static final String LOG_TYPE_SYSTEM = "SYSTEM";
+    private static final String LOG_TYPE_USER = "USER";
 
     private final ObjectMapper objectMapper;
+    private final SettingsServiceApi settingsService;
+    private final UserServiceApi userService;
     private final AtomicLong idGenerator = new AtomicLong(1000);
     private final CopyOnWriteArrayList<LogItemResponse> logs = new CopyOnWriteArrayList<>();
 
-    public LocalLogService(ObjectMapper objectMapper) {
+    public LocalLogService(ObjectMapper objectMapper,
+                           SettingsServiceApi settingsService,
+                           UserServiceApi userService) {
         this.objectMapper = objectMapper;
+        this.settingsService = settingsService;
+        this.userService = userService;
         loadLogStore();
     }
 
     @Override
-    public List<LogItemResponse> listLogs() {
-        return logs.stream().toList();
+    public List<LogItemResponse> listLogs(String logType, String order) {
+        String normalizedType = normalizeLogType(logType);
+        if (normalizedType == null) {
+            applyRetention(LOG_TYPE_SYSTEM);
+            applyRetention(LOG_TYPE_USER);
+        } else {
+            applyRetention(normalizedType);
+        }
+
+        List<LogItemResponse> filtered = logs.stream()
+                .filter(item -> normalizedType == null || normalizedType.equals(resolveLogTypeByOperator(item.operator())))
+                .toList();
+        return sortLogs(filtered, normalizeOrder(order));
     }
 
     @Override
     public void createLog(CreateLogRequest request) {
+        ClientMeta clientMeta = resolveClientMeta();
+        String terminalType = resolveTerminalType(clientMeta.userAgent());
         logs.add(new LogItemResponse(
                 idGenerator.incrementAndGet(),
                 request.operator(),
                 request.module(),
                 request.action(),
                 request.target(),
-                request.createdAt() == null || request.createdAt().isBlank() ? nowText() : request.createdAt()
+                request.createdAt() == null || request.createdAt().isBlank() ? nowText() : request.createdAt(),
+                terminalType,
+                clientMeta.sourceIp()
         ));
+        applyRetention(resolveLogTypeByOperator(request.operator()));
         saveLogStore();
     }
 
@@ -95,7 +128,9 @@ public class LocalLogService implements LogServiceApi {
                         str(item.get("module")),
                         str(item.get("action")),
                         str(item.get("target")),
-                        str(item.getOrDefault("createdAt", nowText()))
+                        str(item.getOrDefault("createdAt", nowText())),
+                        str(item.getOrDefault("terminalType", "未知")),
+                        str(item.getOrDefault("sourceIp", ""))
                 ));
                 if (id > maxId) {
                     maxId = id;
@@ -110,10 +145,182 @@ public class LocalLogService implements LogServiceApi {
                 saveLogStore();
             }
         } catch (Exception ignored) {
-            // nodeps 下本地持久化失败不阻断服务启动
+            // Ignore local log load errors in nodeps mode.
         }
     }
 
+    private List<LogItemResponse> sortLogs(List<LogItemResponse> items, String order) {
+        Comparator<LogItemResponse> comparator =
+                Comparator.comparing(LogItemResponse::createdAt)
+                        .thenComparing(LogItemResponse::id);
+        if ("DESC".equals(order)) {
+            comparator = comparator.reversed();
+        }
+        return items.stream().sorted(comparator).toList();
+    }
+
+    private void applyRetention(String logType) {
+        if (logType == null) {
+            return;
+        }
+
+        RetentionSettings retention = getRetentionSettings(logType);
+        List<LogItemResponse> targetLogs = logs.stream()
+                .filter(item -> logType.equals(resolveLogTypeByOperator(item.operator())))
+                .toList();
+
+        List<LogItemResponse> retained = new ArrayList<>(targetLogs);
+        if (retention.keepDays() > 0) {
+            LocalDateTime threshold = LocalDateTime.now().minusDays(retention.keepDays());
+            retained = retained.stream()
+                    .filter(item -> !parseCreatedAt(item.createdAt()).isBefore(threshold))
+                    .toList();
+        }
+
+        if (retention.keepCount() > 0 && retained.size() > retention.keepCount()) {
+            retained = sortLogs(retained, "DESC").stream()
+                    .limit(retention.keepCount())
+                    .toList();
+        }
+
+        if (retained.size() == targetLogs.size()) {
+            return;
+        }
+
+        List<Long> retainedIds = retained.stream().map(LogItemResponse::id).toList();
+        logs.removeIf(item ->
+                logType.equals(resolveLogTypeByOperator(item.operator())) && !retainedIds.contains(item.id()));
+    }
+
+    private RetentionSettings getRetentionSettings(String logType) {
+        Map<String, Object> settings = settingsService.getSettings();
+        if (LOG_TYPE_USER.equals(logType)) {
+            return new RetentionSettings(
+                    intVal(settings.get("userLogKeepDays"), 90),
+                    intVal(settings.get("userLogKeepCount"), 2000)
+            );
+        }
+        return new RetentionSettings(
+                intVal(settings.get("systemLogKeepDays"), 180),
+                intVal(settings.get("systemLogKeepCount"), 1000)
+        );
+    }
+
+    private String resolveLogTypeByOperator(String operator) {
+        if (operator == null || operator.isBlank()) {
+            return LOG_TYPE_SYSTEM;
+        }
+        Optional<UserModel> user = userService.findByUsername(operator);
+        if (user.isPresent() && "ROLE1".equals(user.get().getRole())) {
+            return LOG_TYPE_USER;
+        }
+        return LOG_TYPE_SYSTEM;
+    }
+
+    private static String normalizeLogType(String logType) {
+        if ("USER".equalsIgnoreCase(logType)) {
+            return LOG_TYPE_USER;
+        }
+        if ("SYSTEM".equalsIgnoreCase(logType)) {
+            return LOG_TYPE_SYSTEM;
+        }
+        return null;
+    }
+
+    private static String normalizeOrder(String order) {
+        if ("ASC".equalsIgnoreCase(order)) {
+            return "ASC";
+        }
+        return "DESC";
+    }
+
+    private static LocalDateTime parseCreatedAt(String value) {
+        try {
+            return LocalDateTime.parse(value, DATE_TIME_FORMATTER);
+        } catch (Exception e) {
+            return LocalDateTime.now();
+        }
+    }
+
+    private static ClientMeta resolveClientMeta() {
+        try {
+            RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+            if (attributes instanceof ServletRequestAttributes servletAttributes) {
+                HttpServletRequest request = servletAttributes.getRequest();
+                if (request != null) {
+                    String ip = normalizeIp(resolveClientIp(request));
+                    String userAgent = normalizeUserAgent(resolveUserAgent(request));
+                    return new ClientMeta(ip, userAgent);
+                }
+            }
+        } catch (Exception ignored) {
+            // ignore when request context unavailable
+        }
+        return new ClientMeta(null, null);
+    }
+
+    private static String resolveClientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            int commaIndex = forwarded.indexOf(',');
+            return (commaIndex >= 0 ? forwarded.substring(0, commaIndex) : forwarded).trim();
+        }
+        String realIp = request.getHeader("X-Real-IP");
+        if (realIp != null && !realIp.isBlank()) {
+            return realIp.trim();
+        }
+        return request.getRemoteAddr();
+    }
+
+    private static String resolveUserAgent(HttpServletRequest request) {
+        String userAgent = request.getHeader("User-Agent");
+        return userAgent == null ? null : userAgent.trim();
+    }
+
+    private static String resolveTerminalType(String userAgent) {
+        if (userAgent == null || userAgent.isBlank()) {
+            return "未知";
+        }
+        String ua = userAgent.toLowerCase(Locale.ROOT);
+        if (ua.contains("openharmony") || ua.contains("harmony") || ua.contains("arkweb") || ua.contains("hmos")) {
+            return "鸿蒙";
+        }
+        if (ua.contains("ipad") || ua.contains("tablet")) {
+            return "平板";
+        }
+        if (ua.contains("mobile") || ua.contains("android") || ua.contains("iphone")) {
+            return "移动端";
+        }
+        return "PC";
+    }
+
+    private static String normalizeIp(String ip) {
+        if (ip == null) {
+            return null;
+        }
+        String text = ip.trim();
+        if (text.isBlank()) {
+            return null;
+        }
+        if (text.length() > 45) {
+            return text.substring(0, 45);
+        }
+        return text;
+    }
+
+    private static String normalizeUserAgent(String userAgent) {
+        if (userAgent == null) {
+            return null;
+        }
+        String text = userAgent.trim();
+        if (text.isBlank()) {
+            return null;
+        }
+        if (text.length() > 255) {
+            return text.substring(0, 255);
+        }
+        return text;
+    }
     private synchronized void saveLogStore() {
         try {
             Files.createDirectories(LOG_STORE_FILE.getParent());
@@ -130,6 +337,8 @@ public class LocalLogService implements LogServiceApi {
                         row.put("action", item.action());
                         row.put("target", item.target());
                         row.put("createdAt", item.createdAt());
+                        row.put("terminalType", item.terminalType());
+                        row.put("sourceIp", item.sourceIp());
                         return row;
                     })
                     .toList();
@@ -137,8 +346,9 @@ public class LocalLogService implements LogServiceApi {
 
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(LOG_STORE_FILE.toFile(), snapshot);
         } catch (Exception ignored) {
-            // nodeps 下本地持久化失败不阻断主流程
+            // nodeps 模式忽略本地日志保存错误
         }
+
     }
 
     private static Path resolveLogStoreReadPath() {
@@ -153,6 +363,20 @@ public class LocalLogService implements LogServiceApi {
 
     private static String str(Object value) {
         return value == null ? "" : String.valueOf(value);
+    }
+
+    private static int intVal(Object value, int fallback) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value == null) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (Exception e) {
+            return fallback;
+        }
     }
 
     private static Long longValue(Object value, Long fallback) {
@@ -186,4 +410,13 @@ public class LocalLogService implements LogServiceApi {
         }
         return List.of();
     }
+
+    private record RetentionSettings(int keepDays, int keepCount) {
+    }
+
+    private record ClientMeta(String sourceIp, String userAgent) {
+    }
 }
+
+
+

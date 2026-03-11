@@ -14,6 +14,8 @@ import com.surver.sys.houduan.module.survey.dto.SubmitSurveyResponse;
 import com.surver.sys.houduan.module.survey.dto.SurveyAuthUserDto;
 import com.surver.sys.houduan.module.survey.dto.SurveyDetailResponse;
 import com.surver.sys.houduan.module.survey.dto.SurveyListItemResponse;
+import com.surver.sys.houduan.module.survey.dto.SurveyResponseItemResponse;
+import com.surver.sys.houduan.module.survey.dto.SurveyResponseListResponse;
 import com.surver.sys.houduan.module.survey.dto.SurveyStatsResponse;
 import com.surver.sys.houduan.module.survey.dto.UpdateSurveyRequest;
 import com.surver.sys.houduan.module.survey.model.SurveyModel;
@@ -52,6 +54,7 @@ public class SurveyService implements SurveyServiceApi {
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final Duration ENTRY_TOKEN_TTL = Duration.ofMinutes(30);
     private static final Duration SUBMIT_LOCK_TTL = Duration.ofSeconds(10);
+    private static final int TEXT_SAMPLE_LIMIT = 5;
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
@@ -71,7 +74,7 @@ public class SurveyService implements SurveyServiceApi {
     public SurveyDetailResponse createSurvey(UserPrincipal principal, CreateSurveyRequest request) {
         String normalizedTitle = SurveyTitleCodec.normalizeInputTitle(request.title());
         if (SurveyTitleCodec.isLikelyBrokenTitle(normalizedTitle)) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Invalid survey title encoding");
+            throw new BizException(ErrorCode.INVALID_PARAM, "问卷标题编码异常，请使用 UTF-8 客户端提交");
         }
         String schemaJson = writeJson(cloneSchema(request.questions()));
         KeyHolder keyHolder = new GeneratedKeyHolder();
@@ -93,23 +96,24 @@ public class SurveyService implements SurveyServiceApi {
         }, keyHolder);
         Number key = keyHolder.getKey();
         if (key == null) {
-            throw new BizException(ErrorCode.SERVER_ERROR, "鍒涘缓闂嵎澶辫触");
+            throw new BizException(ErrorCode.SERVER_ERROR, "创建问卷失败");
         }
         SurveyDetailResponse created = toDetail(getSurvey(key.longValue()));
-        logService.appendSystemLog(principal.username(), "SURVEY", "CREATE", created.title());
+        logService.appendSystemLog(principal.username(), "SURVEY", "CREATE",
+                formatSurveyTarget(created.id(), created.title()));
         return created;
     }
 
     public List<SurveyListItemResponse> listSurveys(UserPrincipal principal) {
         if ("ROLE1".equals(principal.role())) {
-            throw new BizException(ErrorCode.FORBIDDEN, "forbidden");
+            throw new BizException(ErrorCode.FORBIDDEN, "无权限访问问卷列表");
         }
         if ("ROLE3".equals(principal.role())) {
             return jdbcTemplate.query("""
                     SELECT id, title, status, created_at, creator_user_id
                     FROM survey_info
                     WHERE status <> 'DELETED'
-                    ORDER BY id ASC
+                    ORDER BY created_at DESC, id DESC
                     """, (rs, rowNum) -> new SurveyListItemResponse(
                     rs.getLong("id"),
                     SurveyTitleCodec.repairLegacyTitle(rs.getString("title"), rs.getLong("id")),
@@ -124,7 +128,7 @@ public class SurveyService implements SurveyServiceApi {
                 LEFT JOIN survey_auth a ON a.survey_id = s.id
                 WHERE s.status <> 'DELETED'
                   AND (s.creator_user_id = ? OR a.grantee_user_id = ?)
-                ORDER BY s.id ASC
+                ORDER BY s.created_at DESC, s.id DESC
                 """, (rs, rowNum) -> new SurveyListItemResponse(
                 rs.getLong("id"),
                 SurveyTitleCodec.repairLegacyTitle(rs.getString("title"), rs.getLong("id")),
@@ -137,7 +141,7 @@ public class SurveyService implements SurveyServiceApi {
     public SurveyDetailResponse getSurveyDetail(UserPrincipal principal, Long id) {
         SurveyModel model = getSurvey(id);
         if (!canAccessSurvey(principal, model.getId(), model.getCreatorId())) {
-            throw new BizException(ErrorCode.FORBIDDEN, "鏃犳潈闄愯闂闂嵎");
+            throw new BizException(ErrorCode.FORBIDDEN, "无权限访问问卷详情");
         }
         return toDetail(model);
     }
@@ -147,7 +151,7 @@ public class SurveyService implements SurveyServiceApi {
         ensureCanManageSurvey(principal, model.getId(), model.getCreatorId());
         String normalizedTitle = SurveyTitleCodec.normalizeInputTitle(request.title());
         if (SurveyTitleCodec.isLikelyBrokenTitle(normalizedTitle)) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Invalid survey title encoding");
+            throw new BizException(ErrorCode.INVALID_PARAM, "问卷标题编码异常，请使用 UTF-8 客户端提交");
         }
         jdbcTemplate.update("""
                 UPDATE survey_info
@@ -161,7 +165,8 @@ public class SurveyService implements SurveyServiceApi {
                 id
         );
         SurveyDetailResponse updated = toDetail(getSurvey(id));
-        logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE", updated.title());
+        logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE",
+                formatSurveyTarget(updated.id(), updated.title()));
         return updated;
     }
 
@@ -172,21 +177,24 @@ public class SurveyService implements SurveyServiceApi {
         if (hasQuota(model)) {
             surveyRedisService.resetQuotaCount(id, countAnswers(id));
         }
-        logService.appendSystemLog(principal.username(), "SURVEY", "PUBLISH", model.getTitle());
+        logService.appendSystemLog(principal.username(), "SURVEY", "PUBLISH",
+                formatSurveyTarget(model.getId(), model.getTitle()));
     }
 
     public void closeSurvey(UserPrincipal principal, Long id) {
         SurveyModel model = getSurvey(id);
         ensureCanManageSurvey(principal, model.getId(), model.getCreatorId());
         jdbcTemplate.update("UPDATE survey_info SET status = 'CLOSED' WHERE id = ?", id);
-        logService.appendSystemLog(principal.username(), "SURVEY", "CLOSE", model.getTitle());
+        logService.appendSystemLog(principal.username(), "SURVEY", "CLOSE",
+                formatSurveyTarget(model.getId(), model.getTitle()));
     }
 
     public void deleteSurvey(UserPrincipal principal, Long id) {
         SurveyModel model = getSurvey(id);
         ensureCanManageSurvey(principal, model.getId(), model.getCreatorId());
         jdbcTemplate.update("UPDATE survey_info SET status = 'DELETED', deleted_at = NOW() WHERE id = ?", id);
-        logService.appendSystemLog(principal.username(), "SURVEY", "DELETE", model.getTitle());
+        logService.appendSystemLog(principal.username(), "SURVEY", "DELETE",
+                formatSurveyTarget(model.getId(), model.getTitle()));
     }
 
     public PublicSurveyResponse getPublicSurvey(UserPrincipal principal, Long id, boolean previewMode) {
@@ -196,7 +204,7 @@ public class SurveyService implements SurveyServiceApi {
         boolean allowDuplicateSubmit = model.isAllowDuplicateSubmit();
         boolean submitted = hasSubmitted(id, principal.userId());
         if (!previewMode && !allowDuplicateSubmit && submitted) {
-            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "duplicate submit");
+            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "已经提交过该问卷");
         }
 
         String entryToken = null;
@@ -204,7 +212,7 @@ public class SurveyService implements SurveyServiceApi {
             long quotaCount = surveyRedisService.getOrInitQuotaCount(id, () -> countAnswers(id));
             boolean hasTicket = surveyRedisService.hasEntryToken(id, principal.userId());
             if (quotaCount >= model.getQuotaTotal() && !hasTicket && !submitted) {
-                throw new BizException(ErrorCode.QUOTA_FULL, "褰撳墠闂嵎鍚嶉宸叉弧");
+                throw new BizException(ErrorCode.QUOTA_FULL, "问卷名额已满");
             }
             entryToken = surveyRedisService.issueEntryToken(id, principal.userId(), ENTRY_TOKEN_TTL);
         }
@@ -218,43 +226,50 @@ public class SurveyService implements SurveyServiceApi {
         );
     }
 
-    public SubmitSurveyResponse submitSurvey(UserPrincipal principal, Long id, SubmitSurveyRequest request) {
+    public SubmitSurveyResponse submitSurvey(UserPrincipal principal,
+                                             Long id,
+                                             SubmitSurveyRequest request,
+                                             String sourceIp,
+                                             String userAgent) {
         if (!Objects.equals(id, request.surveyId())) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "surveyId mismatch");
+            throw new BizException(ErrorCode.INVALID_PARAM, "问卷ID不匹配");
         }
         SurveyModel model = getSurvey(id);
         ensureSurveyReadableByPrincipal(principal, model);
         boolean previewMode = boolFlag(request.previewMode());
+        String safeIp = normalizeIp(sourceIp);
+        String safeUserAgent = normalizeUserAgent(userAgent);
 
         boolean allowDuplicateSubmit = model.isAllowDuplicateSubmit();
         boolean submittedBefore = hasSubmitted(id, principal.userId());
         if (!previewMode && !allowDuplicateSubmit && submittedBefore) {
-            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "duplicate submit");
+            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "已经提交过该问卷");
         }
 
         boolean locked = surveyRedisService.tryAcquireSubmitLock(id, principal.userId(), SUBMIT_LOCK_TTL);
         if (!locked) {
-            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "鎻愪氦杩囦簬棰戠箒锛岃绋嶅悗閲嶈瘯");
+            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "提交过于频繁，请稍后再试");
         }
 
         try {
             if (!previewMode && hasQuota(model) && !submittedBefore) {
                 String storedToken = surveyRedisService.getEntryToken(id, principal.userId());
                 if (storedToken == null || storedToken.isBlank()) {
-                    throw new BizException(ErrorCode.QUOTA_FULL, "鍏ュ満鍑瘉宸插け鏁堟垨鍚嶉宸叉弧");
+                    throw new BizException(ErrorCode.QUOTA_FULL, "入场凭证缺失，请刷新后重试");
                 }
                 String requestToken = request.entryToken();
                 if (requestToken != null && !requestToken.isBlank() && !Objects.equals(requestToken, storedToken)) {
-                    throw new BizException(ErrorCode.INVALID_PARAM, "entryToken 鏃犳晥");
+                    throw new BizException(ErrorCode.INVALID_PARAM, "入场凭证无效");
                 }
                 long quotaCount = surveyRedisService.getOrInitQuotaCount(id, () -> countAnswers(id));
                 if (quotaCount >= model.getQuotaTotal()) {
-                    throw new BizException(ErrorCode.QUOTA_FULL, "褰撳墠闂嵎鍚嶉宸叉弧");
+                    throw new BizException(ErrorCode.QUOTA_FULL, "问卷名额已满");
                 }
             }
 
             if (previewMode) {
-                logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE", "preview submit surveyId=" + id);
+                logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE",
+                        "预览提交 " + formatSurveyTarget(id, model.getTitle()));
                 return new SubmitSurveyResponse(id, nowText());
             }
 
@@ -272,16 +287,18 @@ public class SurveyService implements SurveyServiceApi {
                                 survey_title_snapshot = ?,
                                 survey_description_snapshot = ?,
                                 survey_schema_snapshot = CAST(? AS JSON),
-                                submit_time = NOW()
+                                submit_time = NOW(),
+                                ip = ?,
+                                user_agent = ?
                             WHERE survey_id = ? AND user_id = ?
-                            """, answerJson, titleSnapshot, descriptionSnapshot, schemaSnapshotJson, id, principal.userId());
+                            """, answerJson, titleSnapshot, descriptionSnapshot, schemaSnapshotJson, safeIp, safeUserAgent, id, principal.userId());
                 } else {
                     jdbcTemplate.update("""
                             INSERT INTO survey_answer (
                                 survey_id, user_id, answer_data, survey_title_snapshot, survey_description_snapshot, survey_schema_snapshot, ip, user_agent
                             )
-                            VALUES (?, ?, CAST(? AS JSON), ?, ?, CAST(? AS JSON), NULL, NULL)
-                            """, id, principal.userId(), answerJson, titleSnapshot, descriptionSnapshot, schemaSnapshotJson);
+                            VALUES (?, ?, CAST(? AS JSON), ?, ?, CAST(? AS JSON), ?, ?)
+                            """, id, principal.userId(), answerJson, titleSnapshot, descriptionSnapshot, schemaSnapshotJson, safeIp, safeUserAgent);
                     inserted = true;
                 }
             } else {
@@ -290,11 +307,11 @@ public class SurveyService implements SurveyServiceApi {
                             INSERT INTO survey_answer (
                                 survey_id, user_id, answer_data, survey_title_snapshot, survey_description_snapshot, survey_schema_snapshot, ip, user_agent
                             )
-                            VALUES (?, ?, CAST(? AS JSON), ?, ?, CAST(? AS JSON), NULL, NULL)
-                            """, id, principal.userId(), answerJson, titleSnapshot, descriptionSnapshot, schemaSnapshotJson);
+                            VALUES (?, ?, CAST(? AS JSON), ?, ?, CAST(? AS JSON), ?, ?)
+                            """, id, principal.userId(), answerJson, titleSnapshot, descriptionSnapshot, schemaSnapshotJson, safeIp, safeUserAgent);
                     inserted = true;
                 } catch (DataIntegrityViolationException e) {
-                    throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "duplicate submit");
+                    throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "已经提交过该问卷");
                 }
             }
 
@@ -303,7 +320,8 @@ public class SurveyService implements SurveyServiceApi {
                 surveyRedisService.clearEntryToken(id, principal.userId());
             }
 
-            logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE", "鎻愪氦绛斿嵎 surveyId=" + id);
+            logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE",
+                    "提交答卷 " + formatSurveyTarget(id, model.getTitle()));
             return new SubmitSurveyResponse(id, nowText());
         } finally {
             surveyRedisService.releaseSubmitLock(id, principal.userId());
@@ -340,7 +358,7 @@ public class SurveyService implements SurveyServiceApi {
                     rs.getTimestamp("submit_time").toLocalDateTime().format(DATE_TIME_FORMATTER)
             ), id, principal.userId());
         } catch (EmptyResultDataAccessException e) {
-            throw new BizException(ErrorCode.NOT_FOUND, "鏈壘鍒板凡鎻愪氦璁板綍");
+            throw new BizException(ErrorCode.NOT_FOUND, "答卷不存在");
         }
     }
 
@@ -352,8 +370,40 @@ public class SurveyService implements SurveyServiceApi {
                 model.getId(),
                 model.getTitle(),
                 model.getDescription(),
+                countAnswers(id),
                 cloneSchema(model.getSchema()),
                 statsList
+        );
+    }
+
+    @Override
+    public SurveyResponseListResponse listSurveyResponses(UserPrincipal principal, Long id) {
+        SurveyModel model = getSurvey(id);
+        ensureCanManageSurvey(principal, model.getId(), model.getCreatorId());
+
+        List<SurveyResponseItemResponse> responses = jdbcTemplate.query("""
+                SELECT a.user_id, a.submit_time, a.answer_data, a.ip, a.user_agent, u.uid, u.display_name
+                FROM survey_answer a
+                JOIN sys_user u ON u.id = a.user_id
+                WHERE a.survey_id = ?
+                ORDER BY a.submit_time DESC, a.user_id DESC
+                """, (rs, rowNum) -> new SurveyResponseItemResponse(
+                rs.getLong("user_id"),
+                rs.getString("uid"),
+                rs.getString("display_name"),
+                rs.getTimestamp("submit_time").toLocalDateTime().format(DATE_TIME_FORMATTER),
+                resolveTerminalType(rs.getString("user_agent")),
+                resolveSourceType(rs.getString("user_agent")),
+                str(rs.getString("ip")),
+                parseJsonToMap(rs.getString("answer_data"))
+        ), id);
+
+        return new SurveyResponseListResponse(
+                model.getId(),
+                model.getTitle(),
+                model.getDescription(),
+                cloneSchema(model.getSchema()),
+                responses
         );
     }
 
@@ -361,12 +411,12 @@ public class SurveyService implements SurveyServiceApi {
         SurveyModel model = getSurvey(id);
         ensureCanManageSurvey(principal, model.getId(), model.getCreatorId());
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            Sheet sheet = workbook.createSheet("绛斿嵎鏄庣粏");
+            Sheet sheet = workbook.createSheet("答卷导出");
             Row header = sheet.createRow(0);
             int col = 0;
-            header.createCell(col++).setCellValue("鎻愪氦鏃堕棿");
-            header.createCell(col++).setCellValue("璐﹀彿");
-            header.createCell(col++).setCellValue("用户名");
+            header.createCell(col++).setCellValue("提交时间");
+            header.createCell(col++).setCellValue("用户账号");
+            header.createCell(col++).setCellValue("用户姓名");
             for (Map<String, Object> question : model.getSchema()) {
                 header.createCell(col++).setCellValue(str(question.get("title")));
             }
@@ -392,17 +442,18 @@ public class SurveyService implements SurveyServiceApi {
                     if (value == null) {
                         row.createCell(c++).setCellValue("");
                     } else if (value instanceof List<?> list) {
-                        row.createCell(c++).setCellValue(String.join("、", list.stream().map(String::valueOf).toList()));
+                        row.createCell(c++).setCellValue(String.join("；", list.stream().map(String::valueOf).toList()));
                     } else {
                         row.createCell(c++).setCellValue(String.valueOf(value));
                     }
                 }
             }
             workbook.write(out);
-            logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE", "瀵煎嚭绛斿嵎 surveyId=" + id);
+            logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE",
+                    "导出答卷 " + formatSurveyTarget(id, model.getTitle()));
             return out.toByteArray();
         } catch (Exception e) {
-            throw new BizException(ErrorCode.SERVER_ERROR, "瀵煎嚭澶辫触: " + e.getMessage());
+            throw new BizException(ErrorCode.SERVER_ERROR, "导出答卷失败: " + e.getMessage());
         }
     }
 
@@ -438,7 +489,7 @@ public class SurveyService implements SurveyServiceApi {
                 VALUES (?, ?, ?)
                 """, id, user.userId(), principal.userId());
         logService.appendSystemLog(principal.username(), "PERMISSION", "UPDATE",
-                "鎺堟潈闂嵎 surveyId=" + id + ", userId=" + user.userId());
+                "授权用户ID-" + user.userId() + " " + formatSurveyTarget(id, model.getTitle()));
     }
 
     public void removeAuthUser(UserPrincipal principal, Long id, Long userId) {
@@ -449,21 +500,21 @@ public class SurveyService implements SurveyServiceApi {
                 WHERE survey_id = ? AND grantee_user_id = ?
                 """, id, userId);
         logService.appendSystemLog(principal.username(), "PERMISSION", "UPDATE",
-                "鎾ら攢鎺堟潈 surveyId=" + id + ", userId=" + userId);
+                "取消授权用户ID-" + userId + " " + formatSurveyTarget(id, model.getTitle()));
     }
 
     private void ensureCanManageSurvey(UserPrincipal principal, Long surveyId, Long creatorId) {
         if (!canAccessSurvey(principal, surveyId, creatorId)) {
-            throw new BizException(ErrorCode.FORBIDDEN, "鏃犳潈闄愯闂闂嵎");
+            throw new BizException(ErrorCode.FORBIDDEN, "无权限管理该问卷");
         }
     }
 
     private void ensureSurveyReadableByPrincipal(UserPrincipal principal, SurveyModel model) {
         if ("DELETED".equals(model.getStatus())) {
-            throw new BizException(ErrorCode.NOT_FOUND, "闂嵎涓嶅瓨鍦ㄦ垨涓嶅彲璁块棶");
+            throw new BizException(ErrorCode.NOT_FOUND, "问卷不存在");
         }
         if (!"PUBLISHED".equals(model.getStatus()) && !isManagerRole(principal)) {
-            throw new BizException(ErrorCode.NOT_FOUND, "闂嵎涓嶅瓨鍦ㄦ垨涓嶅彲璁块棶");
+            throw new BizException(ErrorCode.NOT_FOUND, "问卷不存在");
         }
     }
 
@@ -512,7 +563,7 @@ public class SurveyService implements SurveyServiceApi {
                 return model;
             }, id);
         } catch (EmptyResultDataAccessException e) {
-            throw new BizException(ErrorCode.NOT_FOUND, "survey not found");
+            throw new BizException(ErrorCode.NOT_FOUND, "问卷不存在");
         }
     }
 
@@ -593,17 +644,24 @@ public class SurveyService implements SurveyServiceApi {
                 }
                 row.put("rateStats", rateStats);
             } else {
-                List<String> samples = new ArrayList<>();
+                LinkedHashSet<String> unique = new LinkedHashSet<>();
                 for (Map<String, Object> answer : answers) {
                     Object value = answer.get(questionId);
                     if (value != null) {
                         String text = String.valueOf(value).trim();
                         if (!text.isBlank()) {
-                            samples.add(text);
+                            unique.add(text);
                         }
                     }
                 }
-                String summary = samples.isEmpty() ? "暂无文本回答" : String.join("；", samples.stream().limit(3).toList());
+                List<String> allAnswers = new ArrayList<>(unique);
+                List<String> samples = allAnswers.stream().limit(TEXT_SAMPLE_LIMIT).toList();
+                row.put("textSamples", samples);
+                row.put("textAnswers", allAnswers);
+                row.put("textCount", allAnswers.size());
+                String summary = allAnswers.isEmpty()
+                        ? "暂无文本回答"
+                        : String.join("；", samples);
                 row.put("textSummary", summary);
             }
             stats.add(row);
@@ -625,6 +683,70 @@ public class SurveyService implements SurveyServiceApi {
 
     private static String nowText() {
         return LocalDateTime.now().format(DATE_TIME_FORMATTER);
+    }
+
+    private static String formatSurveyTarget(Long id, String title) {
+        String safeTitle = title == null ? "" : title.trim();
+        if (safeTitle.isBlank()) {
+            return "问卷ID-" + id;
+        }
+        return "问卷ID-" + safeTitle;
+    }
+
+    private static String resolveTerminalType(String userAgent) {
+        if (userAgent == null || userAgent.isBlank()) {
+            return "未知";
+        }
+        String ua = userAgent.toLowerCase(Locale.ROOT);
+        if (ua.contains("openharmony") || ua.contains("harmony") || ua.contains("arkweb") || ua.contains("hmos")) {
+            return "鸿蒙";
+        }
+        if (ua.contains("ipad") || ua.contains("tablet")) {
+            return "平板";
+        }
+        if (ua.contains("mobile") || ua.contains("android") || ua.contains("iphone")) {
+            return "移动端";
+        }
+        return "PC";
+    }
+
+    private static String resolveSourceType(String userAgent) {
+        if (userAgent == null || userAgent.isBlank()) {
+            return "直接链接";
+        }
+        String ua = userAgent.toLowerCase(Locale.ROOT);
+        if (ua.contains("micromessenger")) {
+            return "微信";
+        }
+        return "直接链接";
+    }
+
+    private static String normalizeIp(String ip) {
+        if (ip == null) {
+            return null;
+        }
+        String text = ip.trim();
+        if (text.isBlank()) {
+            return null;
+        }
+        if (text.length() > 45) {
+            return text.substring(0, 45);
+        }
+        return text;
+    }
+
+    private static String normalizeUserAgent(String userAgent) {
+        if (userAgent == null) {
+            return null;
+        }
+        String text = userAgent.trim();
+        if (text.isBlank()) {
+            return null;
+        }
+        if (text.length() > 255) {
+            return text.substring(0, 255);
+        }
+        return text;
     }
 
     private static boolean hasQuota(SurveyModel model) {
@@ -685,7 +807,7 @@ public class SurveyService implements SurveyServiceApi {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (Exception e) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "JSON serialization failed");
+            throw new BizException(ErrorCode.INVALID_PARAM, "JSON 序列化失败");
         }
     }
 
@@ -729,4 +851,10 @@ public class SurveyService implements SurveyServiceApi {
         return result;
     }
 }
+
+
+
+
+
+
 

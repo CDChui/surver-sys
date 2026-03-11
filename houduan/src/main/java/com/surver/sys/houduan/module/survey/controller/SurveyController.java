@@ -9,11 +9,13 @@ import com.surver.sys.houduan.module.survey.dto.SubmitSurveyResponse;
 import com.surver.sys.houduan.module.survey.dto.SurveyAuthUserDto;
 import com.surver.sys.houduan.module.survey.dto.SurveyDetailResponse;
 import com.surver.sys.houduan.module.survey.dto.SurveyListItemResponse;
+import com.surver.sys.houduan.module.survey.dto.SurveyResponseListResponse;
 import com.surver.sys.houduan.module.survey.dto.UpdateSurveyRequest;
 import com.surver.sys.houduan.module.survey.service.SurveyServiceApi;
 import com.surver.sys.houduan.security.SecurityUtils;
 import com.surver.sys.houduan.security.UserPrincipal;
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -102,6 +104,13 @@ public class SurveyController {
         return ApiResponse.success(surveyService.getSurveyStats(principal, id));
     }
 
+    @GetMapping("/{id}/responses")
+    @PreAuthorize("hasAnyAuthority('ROLE2','ROLE3')")
+    public ApiResponse<SurveyResponseListResponse> listSurveyResponses(@PathVariable Long id) {
+        UserPrincipal principal = SecurityUtils.getCurrentUser();
+        return ApiResponse.success(surveyService.listSurveyResponses(principal, id));
+    }
+
     @GetMapping("/{id}/export")
     @PreAuthorize("hasAnyAuthority('ROLE2','ROLE3')")
     public ResponseEntity<byte[]> exportSurvey(@PathVariable Long id) {
@@ -161,9 +170,12 @@ public class SurveyController {
     @PostMapping("/{id}/responses")
     @PreAuthorize("hasAnyAuthority('ROLE1','ROLE2','ROLE3')")
     public ApiResponse<SubmitSurveyResponse> submitSurvey(@PathVariable Long id,
-                                                          @Valid @RequestBody SubmitSurveyRequest request) {
+                                                          @Valid @RequestBody SubmitSurveyRequest request,
+                                                          HttpServletRequest httpRequest) {
         UserPrincipal principal = SecurityUtils.getCurrentUser();
-        return ApiResponse.success(surveyService.submitSurvey(principal, id, request));
+        String sourceIp = resolveClientIp(httpRequest);
+        String userAgent = resolveUserAgent(httpRequest);
+        return ApiResponse.success(surveyService.submitSurvey(principal, id, request, sourceIp, userAgent));
     }
 
     @GetMapping("/my/submissions")
@@ -178,5 +190,29 @@ public class SurveyController {
     public ApiResponse<MySurveySubmissionDetailResponse> getMySubmissionDetail(@PathVariable Long id) {
         UserPrincipal principal = SecurityUtils.getCurrentUser();
         return ApiResponse.success(surveyService.getMySubmissionDetail(principal, id));
+    }
+
+    private static String resolveClientIp(HttpServletRequest request) {
+        if (request == null) {
+            return null;
+        }
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            int commaIndex = forwarded.indexOf(',');
+            return (commaIndex >= 0 ? forwarded.substring(0, commaIndex) : forwarded).trim();
+        }
+        String realIp = request.getHeader("X-Real-IP");
+        if (realIp != null && !realIp.isBlank()) {
+            return realIp.trim();
+        }
+        return request.getRemoteAddr();
+    }
+
+    private static String resolveUserAgent(HttpServletRequest request) {
+        if (request == null) {
+            return null;
+        }
+        String userAgent = request.getHeader("User-Agent");
+        return userAgent == null ? null : userAgent.trim();
     }
 }

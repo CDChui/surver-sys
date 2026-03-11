@@ -14,6 +14,8 @@ export interface QuestionItem {
   title: string
   required: boolean
   options: QuestionOption[]
+  min?: number
+  max?: number
 }
 
 export interface SurveyItem {

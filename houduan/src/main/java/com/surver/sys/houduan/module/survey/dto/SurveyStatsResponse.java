@@ -7,6 +7,7 @@ public record SurveyStatsResponse(
         Long id,
         String title,
         String description,
+        Long responseCount,
         List<Map<String, Object>> schema,
         List<Map<String, Object>> statsList
 ) {

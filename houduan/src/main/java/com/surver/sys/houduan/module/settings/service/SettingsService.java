@@ -31,7 +31,8 @@ public class SettingsService implements SettingsServiceApi {
         ensureSettingsRow();
         Map<String, Object> row = jdbcTemplate.queryForMap("""
                 SELECT system_name, system_domain, default_page_size, enable_log,
-                       enable_resume_draft, allow_duplicate_submit, admin_logo, user_home_logo,
+                       enable_resume_draft, allow_duplicate_submit, admin_logo, user_home_logo, title_logo,
+                       system_log_keep_days, system_log_keep_count, user_log_keep_days, user_log_keep_count,
                        oauth_json, auth_integration_json
                 FROM sys_settings
                 WHERE id = ?
@@ -45,6 +46,11 @@ public class SettingsService implements SettingsServiceApi {
         result.put("allowDuplicateSubmit", boolVal(row.get("allow_duplicate_submit")));
         result.put("adminLogo", str(row.get("admin_logo")));
         result.put("userHomeLogo", str(row.get("user_home_logo")));
+        result.put("titleLogo", str(row.get("title_logo")));
+        result.put("systemLogKeepDays", intVal(row.get("system_log_keep_days"), 180));
+        result.put("systemLogKeepCount", intVal(row.get("system_log_keep_count"), 1000));
+        result.put("userLogKeepDays", intVal(row.get("user_log_keep_days"), 90));
+        result.put("userLogKeepCount", intVal(row.get("user_log_keep_count"), 2000));
         result.put("oauth", parseJsonToMap(row.get("oauth_json"), (Map<String, Object>) defaultSettings().get("oauth")));
         result.put("authIntegration", parseJsonToMap(row.get("auth_integration_json"),
                 (Map<String, Object>) defaultSettings().get("authIntegration")));
@@ -68,7 +74,8 @@ public class SettingsService implements SettingsServiceApi {
             jdbcTemplate.update("""
                     UPDATE sys_settings
                     SET system_name = ?, system_domain = ?, default_page_size = ?, enable_log = ?,
-                        enable_resume_draft = ?, allow_duplicate_submit = ?, admin_logo = ?, user_home_logo = ?,
+                        enable_resume_draft = ?, allow_duplicate_submit = ?, admin_logo = ?, user_home_logo = ?, title_logo = ?,
+                        system_log_keep_days = ?, system_log_keep_count = ?, user_log_keep_days = ?, user_log_keep_count = ?,
                         oauth_json = ?, auth_integration_json = ?
                     WHERE id = ?
                     """,
@@ -80,6 +87,11 @@ public class SettingsService implements SettingsServiceApi {
                     boolVal(merged.get("allowDuplicateSubmit")) ? 1 : 0,
                     str(merged.get("adminLogo")),
                     str(merged.get("userHomeLogo")),
+                    str(merged.get("titleLogo")),
+                    intVal(merged.get("systemLogKeepDays"), 180),
+                    intVal(merged.get("systemLogKeepCount"), 1000),
+                    intVal(merged.get("userLogKeepDays"), 90),
+                    intVal(merged.get("userLogKeepCount"), 2000),
                     objectMapper.writeValueAsString(merged.get("oauth")),
                     objectMapper.writeValueAsString(merged.get("authIntegration")),
                     SETTINGS_ID
@@ -99,10 +111,11 @@ public class SettingsService implements SettingsServiceApi {
             jdbcTemplate.update("""
                     INSERT INTO sys_settings (
                         id, system_name, system_domain, default_page_size, enable_log,
-                        enable_resume_draft, allow_duplicate_submit, admin_logo, user_home_logo,
+                        enable_resume_draft, allow_duplicate_submit, admin_logo, user_home_logo, title_logo,
+                        system_log_keep_days, system_log_keep_count, user_log_keep_days, user_log_keep_count,
                         oauth_json, auth_integration_json
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     SETTINGS_ID,
                     defaults.get("systemName"),
@@ -113,6 +126,11 @@ public class SettingsService implements SettingsServiceApi {
                     boolVal(defaults.get("allowDuplicateSubmit")) ? 1 : 0,
                     defaults.get("adminLogo"),
                     defaults.get("userHomeLogo"),
+                    defaults.get("titleLogo"),
+                    defaults.get("systemLogKeepDays"),
+                    defaults.get("systemLogKeepCount"),
+                    defaults.get("userLogKeepDays"),
+                    defaults.get("userLogKeepCount"),
                     objectMapper.writeValueAsString(defaults.get("oauth")),
                     objectMapper.writeValueAsString(defaults.get("authIntegration"))
             );
@@ -149,6 +167,11 @@ public class SettingsService implements SettingsServiceApi {
         root.put("allowDuplicateSubmit", false);
         root.put("adminLogo", "");
         root.put("userHomeLogo", "");
+        root.put("titleLogo", "");
+        root.put("systemLogKeepDays", 180);
+        root.put("systemLogKeepCount", 1000);
+        root.put("userLogKeepDays", 90);
+        root.put("userLogKeepCount", 2000);
 
         Map<String, Object> oauth = new LinkedHashMap<>();
         oauth.put("enabled", false);

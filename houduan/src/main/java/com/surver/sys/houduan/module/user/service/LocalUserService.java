@@ -70,7 +70,8 @@ public class LocalUserService implements UserServiceApi {
     @Override
     public List<UserItemResponse> listUsers() {
         return userStore.values().stream()
-                .sorted(Comparator.comparing(UserModel::getId))
+                .sorted(Comparator.comparing(UserModel::getCreatedAt).reversed()
+                        .thenComparing(UserModel::getId).reversed())
                 .map(this::toResponse)
                 .toList();
     }
@@ -102,7 +103,7 @@ public class LocalUserService implements UserServiceApi {
         UserModel model = getById(id);
         String nextRealName = normalize(request.realName());
         if (!model.isLocalAccount() && !Objects.equals(model.getRealName(), nextRealName)) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Third-party user's real name cannot be modified");
+            throw new BizException(ErrorCode.INVALID_PARAM, "第三方用户的姓名不可修改");
         }
 
         if (model.isLocalAccount()) {
@@ -119,7 +120,7 @@ public class LocalUserService implements UserServiceApi {
     public void deleteUser(Long id) {
         UserModel model = getById(id);
         if ("ROLE3".equals(model.getRole())) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "System administrator cannot be deleted");
+            throw new BizException(ErrorCode.INVALID_PARAM, "系统管理员不可删除");
         }
         userStore.remove(id);
         saveUserStore();
@@ -143,7 +144,7 @@ public class LocalUserService implements UserServiceApi {
     public void resetLocalUserPassword(Long id, String newPassword) {
         UserModel model = getById(id);
         if (!model.isLocalAccount()) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Only local users support password reset");
+            throw new BizException(ErrorCode.INVALID_PARAM, "仅本地用户支持重置密码");
         }
 
         String normalized = normalize(newPassword);
@@ -156,7 +157,7 @@ public class LocalUserService implements UserServiceApi {
     public void changeOwnLocalPassword(Long userId, String oldPassword, String newPassword) {
         UserModel model = getById(userId);
         if (!model.isLocalAccount()) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Current account is not a local account");
+            throw new BizException(ErrorCode.INVALID_PARAM, "当前账号不是本地账号");
         }
 
         String oldNormalized = normalize(oldPassword);
@@ -164,14 +165,14 @@ public class LocalUserService implements UserServiceApi {
         ensureValidPassword(newNormalized);
 
         if (oldNormalized.isEmpty()) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Old password is required");
+            throw new BizException(ErrorCode.INVALID_PARAM, "请输入旧密码");
         }
         if (oldNormalized.equals(newNormalized)) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "New password must be different from old password");
+            throw new BizException(ErrorCode.INVALID_PARAM, "新密码不能与旧密码相同");
         }
         if (model.getPasswordHash() == null || model.getPasswordHash().isBlank() ||
                 !passwordEncoder.matches(oldNormalized, model.getPasswordHash())) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Old password is incorrect");
+            throw new BizException(ErrorCode.INVALID_PARAM, "旧密码不正确");
         }
 
         model.setPasswordHash(passwordEncoder.encode(newNormalized));
@@ -188,7 +189,7 @@ public class LocalUserService implements UserServiceApi {
     public UserModel getById(Long id) {
         UserModel model = userStore.get(id);
         if (model == null) {
-            throw new BizException(ErrorCode.NOT_FOUND, "User not found");
+            throw new BizException(ErrorCode.NOT_FOUND, "用户不存在");
         }
         return model;
     }
@@ -258,7 +259,7 @@ public class LocalUserService implements UserServiceApi {
 
     private void ensureUsernameNotExists(String username) {
         if (findByUsername(username).isPresent()) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Username already exists");
+            throw new BizException(ErrorCode.INVALID_PARAM, "用户名已存在");
         }
     }
 
@@ -500,10 +501,10 @@ public class LocalUserService implements UserServiceApi {
 
     private static void ensureValidPassword(String password) {
         if (password == null || password.isBlank()) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Password cannot be empty");
+            throw new BizException(ErrorCode.INVALID_PARAM, "密码不能为空");
         }
         if (password.length() < 6 || password.length() > 64) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "Password length must be between 6 and 64");
+            throw new BizException(ErrorCode.INVALID_PARAM, "密码长度需在 6 到 64 位之间");
         }
     }
 }

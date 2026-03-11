@@ -53,7 +53,8 @@ async function loadBranding() {
       ...settingsStore.settings,
       systemName: response.data.systemName || settingsStore.settings.systemName,
       adminLogo: response.data.adminLogo || '',
-      userHomeLogo: response.data.userHomeLogo || ''
+      userHomeLogo: response.data.userHomeLogo || '',
+      titleLogo: response.data.titleLogo || ''
     })
   } catch (error) {
     // keep homepage resilient when branding endpoint is temporarily unavailable

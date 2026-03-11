@@ -1,6 +1,7 @@
 import request from './request'
 import { USE_REAL_API } from '../config/env'
 import { useLogStore } from '../stores/log'
+import { useUserStore } from '../stores/user'
 
 export interface ApiResponse<T> {
   code: number
@@ -18,6 +19,8 @@ export type LogAction =
   | 'LOGIN'
   | 'LOGOUT'
 
+export type LogType = 'SYSTEM' | 'USER'
+
 export interface LogItemResult {
   id: number
   operator: string
@@ -25,6 +28,13 @@ export interface LogItemResult {
   action: LogAction
   target: string
   createdAt: string
+  terminalType?: string
+  sourceIp?: string
+}
+
+export interface LogListParams {
+  logType?: LogType
+  order?: 'ASC' | 'DESC'
 }
 
 export interface CreateLogParams {
@@ -46,17 +56,49 @@ function getNowText() {
   return `${y}-${m}-${d} ${hh}:${mm}:${ss}`
 }
 
-export async function getLogList(): Promise<ApiResponse<LogItemResult[]>> {
+function resolveLogType(operator: string): LogType {
+  const userStore = useUserStore()
+  const match = userStore.userList.find((item) => item.username === operator)
+  return match?.role === 'ROLE1' ? 'USER' : 'SYSTEM'
+}
+
+function sortLogs(items: LogItemResult[], order: 'ASC' | 'DESC') {
+  const direction = order === 'ASC' ? 1 : -1
+  return [...items].sort((a, b) => {
+    if (a.createdAt === b.createdAt) {
+      return (a.id - b.id) * direction
+    }
+    return a.createdAt > b.createdAt ? direction : -direction
+  })
+}
+
+export async function getLogList(
+  params: LogListParams = {}
+): Promise<ApiResponse<LogItemResult[]>> {
   if (USE_REAL_API) {
-    return request.get('/logs')
+    return request.get('/logs', {
+      params: {
+        type: params.logType,
+        order: params.order || 'DESC'
+      }
+    })
   }
 
   const logStore = useLogStore()
+  const logType = params.logType
+  const order = params.order || 'DESC'
+
+  let data = logStore.logList as LogItemResult[]
+  if (logType) {
+    data = data.filter((item) => resolveLogType(item.operator) === logType)
+  }
+
+  data = sortLogs(data, order)
 
   return {
     code: 20000,
     message: 'success',
-    data: logStore.logList
+    data
   }
 }
 
@@ -71,7 +113,9 @@ export async function createLog(params: CreateLogParams): Promise<ApiResponse<nu
     module: params.module,
     action: params.action,
     target: params.target,
-    createdAt: params.createdAt || getNowText()
+    createdAt: params.createdAt || getNowText(),
+    terminalType: '未知',
+    sourceIp: ''
   })
 
   return {

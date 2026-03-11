@@ -7,7 +7,7 @@ import java.util.List;
 
 public interface LogServiceApi {
 
-    List<LogItemResponse> listLogs();
+    List<LogItemResponse> listLogs(String logType, String order);
 
     void createLog(CreateLogRequest request);
 

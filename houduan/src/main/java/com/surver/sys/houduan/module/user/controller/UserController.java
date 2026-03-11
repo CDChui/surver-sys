@@ -43,7 +43,8 @@ public class UserController {
     @PreAuthorize("hasAuthority('ROLE3')")
     public ApiResponse<Void> createUser(@Valid @RequestBody CreateUserRequest request) {
         userService.createUser(request);
-        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "CREATE", request.username());
+        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "CREATE",
+                "用户账号-" + request.username());
         return ApiResponse.success();
     }
 
@@ -51,7 +52,8 @@ public class UserController {
     @PreAuthorize("hasAuthority('ROLE3')")
     public ApiResponse<Void> updateUser(@PathVariable Long id, @Valid @RequestBody UpdateUserRequest request) {
         userService.updateUser(id, request);
-        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE", "USER_ID=" + id);
+        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE",
+                "用户ID-" + id);
         return ApiResponse.success();
     }
 
@@ -59,7 +61,8 @@ public class UserController {
     @PreAuthorize("hasAuthority('ROLE3')")
     public ApiResponse<Void> deleteUser(@PathVariable Long id) {
         userService.deleteUser(id);
-        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "DELETE", "USER_ID=" + id);
+        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "DELETE",
+                "用户ID-" + id);
         return ApiResponse.success();
     }
 
@@ -67,7 +70,8 @@ public class UserController {
     @PreAuthorize("hasAuthority('ROLE3')")
     public ApiResponse<Void> updateRole(@PathVariable Long id, @Valid @RequestBody UserRoleRequest request) {
         userService.updateRole(id, request.role());
-        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE", "ROLE userId=" + id);
+        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE",
+                "用户ID-" + id + " 角色变更");
         return ApiResponse.success();
     }
 
@@ -75,7 +79,8 @@ public class UserController {
     @PreAuthorize("hasAuthority('ROLE3')")
     public ApiResponse<Void> updateStatus(@PathVariable Long id, @Valid @RequestBody UserStatusRequest request) {
         userService.updateStatus(id, request.status());
-        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE", "STATUS userId=" + id);
+        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE",
+                "用户ID-" + id + " 状态变更");
         return ApiResponse.success();
     }
 
@@ -84,7 +89,8 @@ public class UserController {
     public ApiResponse<Void> resetUserPassword(@PathVariable Long id,
                                                @Valid @RequestBody ResetUserPasswordRequest request) {
         userService.resetLocalUserPassword(id, request.newPassword());
-        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE", "RESET_PASSWORD userId=" + id);
+        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE",
+                "用户ID-" + id + " 重置密码");
         return ApiResponse.success();
     }
 
@@ -96,7 +102,8 @@ public class UserController {
                 request.oldPassword(),
                 request.newPassword()
         );
-        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE", "CHANGE_OWN_PASSWORD");
+        logService.appendSystemLog(SecurityUtils.getCurrentUser().username(), "USER", "UPDATE",
+                "修改本人密码");
         return ApiResponse.success();
     }
 }

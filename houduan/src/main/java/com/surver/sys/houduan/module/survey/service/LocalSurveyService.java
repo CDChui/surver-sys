@@ -14,6 +14,8 @@ import com.surver.sys.houduan.module.survey.dto.SubmitSurveyResponse;
 import com.surver.sys.houduan.module.survey.dto.SurveyAuthUserDto;
 import com.surver.sys.houduan.module.survey.dto.SurveyDetailResponse;
 import com.surver.sys.houduan.module.survey.dto.SurveyListItemResponse;
+import com.surver.sys.houduan.module.survey.dto.SurveyResponseItemResponse;
+import com.surver.sys.houduan.module.survey.dto.SurveyResponseListResponse;
 import com.surver.sys.houduan.module.survey.dto.SurveyStatsResponse;
 import com.surver.sys.houduan.module.survey.dto.UpdateSurveyRequest;
 import com.surver.sys.houduan.module.survey.model.SurveyModel;
@@ -53,6 +55,7 @@ public class LocalSurveyService implements SurveyServiceApi {
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final long ENTRY_TOKEN_TTL_MILLIS = 30 * 60 * 1000L;
     private static final long SUBMIT_LOCK_TTL_MILLIS = 10 * 1000L;
+    private static final int TEXT_SAMPLE_LIMIT = 5;
     private static final Path SURVEY_STORE_FILE = Path.of(".nodeps-data", "surveys.json").toAbsolutePath().normalize();
     private static final Path LEGACY_SURVEY_STORE_FILE = Path.of("..", ".nodeps-data", "surveys.json").toAbsolutePath().normalize();
 
@@ -95,20 +98,22 @@ public class LocalSurveyService implements SurveyServiceApi {
         model.setSchema(cloneSchema(request.questions()));
         surveyStore.put(model.getId(), model);
         saveSurveyStore();
-        logService.appendSystemLog(principal.username(), "SURVEY", "CREATE", model.getTitle());
+        logService.appendSystemLog(principal.username(), "SURVEY", "CREATE",
+                formatSurveyTarget(model.getId(), model.getTitle()));
         return toDetail(model);
     }
 
     @Override
     public List<SurveyListItemResponse> listSurveys(UserPrincipal principal) {
         if ("ROLE1".equals(principal.role())) {
-            throw new BizException(ErrorCode.FORBIDDEN, "forbidden");
+            throw new BizException(ErrorCode.FORBIDDEN, "无权限访问问卷列表");
         }
         repairStoredTitlesIfNeeded();
         return surveyStore.values().stream()
                 .filter(model -> !"DELETED".equals(model.getStatus()))
                 .filter(model -> canAccessSurvey(principal, model.getId(), model.getCreatorId()))
-                .sorted(Comparator.comparing(SurveyModel::getId))
+                .sorted(Comparator.comparing(SurveyModel::getCreatedAt).reversed()
+                        .thenComparing(SurveyModel::getId).reversed())
                 .map(model -> new SurveyListItemResponse(
                         model.getId(),
                         model.getTitle(),
@@ -123,7 +128,7 @@ public class LocalSurveyService implements SurveyServiceApi {
     public SurveyDetailResponse getSurveyDetail(UserPrincipal principal, Long id) {
         SurveyModel model = getSurvey(id);
         if (!canAccessSurvey(principal, model.getId(), model.getCreatorId())) {
-            throw new BizException(ErrorCode.FORBIDDEN, "forbidden");
+            throw new BizException(ErrorCode.FORBIDDEN, "无权限访问问卷详情");
         }
         return toDetail(model);
     }
@@ -141,7 +146,8 @@ public class LocalSurveyService implements SurveyServiceApi {
         model.setAllowDuplicateSubmit(boolValue(request.allowDuplicateSubmit()));
         model.setSchema(cloneSchema(request.questions()));
         saveSurveyStore();
-        logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE", model.getTitle());
+        logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE",
+                formatSurveyTarget(model.getId(), model.getTitle()));
         return toDetail(model);
     }
 
@@ -154,7 +160,8 @@ public class LocalSurveyService implements SurveyServiceApi {
             quotaCountStore.put(id, new AtomicLong(countAnswers(id)));
         }
         saveSurveyStore();
-        logService.appendSystemLog(principal.username(), "SURVEY", "PUBLISH", model.getTitle());
+        logService.appendSystemLog(principal.username(), "SURVEY", "PUBLISH",
+                formatSurveyTarget(model.getId(), model.getTitle()));
     }
 
     @Override
@@ -163,7 +170,8 @@ public class LocalSurveyService implements SurveyServiceApi {
         ensureCanManageSurvey(principal, model.getId(), model.getCreatorId());
         model.setStatus("CLOSED");
         saveSurveyStore();
-        logService.appendSystemLog(principal.username(), "SURVEY", "CLOSE", model.getTitle());
+        logService.appendSystemLog(principal.username(), "SURVEY", "CLOSE",
+                formatSurveyTarget(model.getId(), model.getTitle()));
     }
 
     @Override
@@ -172,7 +180,8 @@ public class LocalSurveyService implements SurveyServiceApi {
         ensureCanManageSurvey(principal, model.getId(), model.getCreatorId());
         model.setStatus("DELETED");
         saveSurveyStore();
-        logService.appendSystemLog(principal.username(), "SURVEY", "DELETE", model.getTitle());
+        logService.appendSystemLog(principal.username(), "SURVEY", "DELETE",
+                formatSurveyTarget(model.getId(), model.getTitle()));
     }
 
     @Override
@@ -183,7 +192,7 @@ public class LocalSurveyService implements SurveyServiceApi {
         boolean allowDuplicateSubmit = model.isAllowDuplicateSubmit();
         boolean submitted = hasSubmitted(id, principal.userId());
         if (!previewMode && !allowDuplicateSubmit && submitted) {
-            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "duplicate submit");
+            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "已经提交过该问卷");
         }
 
         String entryToken = null;
@@ -191,7 +200,7 @@ public class LocalSurveyService implements SurveyServiceApi {
             long quotaCount = getOrInitQuotaCount(id);
             boolean hasTicket = hasEntryToken(id, principal.userId());
             if (quotaCount >= model.getQuotaTotal() && !hasTicket && !submitted) {
-                throw new BizException(ErrorCode.QUOTA_FULL, "quota full");
+                throw new BizException(ErrorCode.QUOTA_FULL, "问卷名额已满");
             }
             entryToken = issueEntryToken(id, principal.userId());
         }
@@ -206,43 +215,50 @@ public class LocalSurveyService implements SurveyServiceApi {
     }
 
     @Override
-    public SubmitSurveyResponse submitSurvey(UserPrincipal principal, Long id, SubmitSurveyRequest request) {
+    public SubmitSurveyResponse submitSurvey(UserPrincipal principal,
+                                             Long id,
+                                             SubmitSurveyRequest request,
+                                             String sourceIp,
+                                             String userAgent) {
         if (!Objects.equals(id, request.surveyId())) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "surveyId mismatch");
+            throw new BizException(ErrorCode.INVALID_PARAM, "问卷ID不匹配");
         }
         SurveyModel model = getSurvey(id);
         ensureSurveyReadableByPrincipal(principal, model);
         boolean previewMode = boolValue(request.previewMode());
+        String safeIp = normalizeIp(sourceIp);
+        String safeUserAgent = normalizeUserAgent(userAgent);
 
         boolean allowDuplicateSubmit = model.isAllowDuplicateSubmit();
         boolean submittedBefore = hasSubmitted(id, principal.userId());
         if (!previewMode && !allowDuplicateSubmit && submittedBefore) {
-            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "duplicate submit");
+            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "已经提交过该问卷");
         }
 
         if (!tryAcquireSubmitLock(id, principal.userId())) {
-            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "submit too frequent");
+            throw new BizException(ErrorCode.DUPLICATE_SUBMIT, "提交过于频繁，请稍后再试");
         }
 
         try {
             if (!previewMode && hasQuota(model) && !submittedBefore) {
                 String storedToken = getEntryToken(id, principal.userId());
                 if (storedToken == null || storedToken.isBlank()) {
-                    throw new BizException(ErrorCode.QUOTA_FULL, "entry token missing");
+                    throw new BizException(ErrorCode.QUOTA_FULL, "入场凭证缺失，请刷新后重试");
                 }
                 String requestToken = request.entryToken();
                 if (requestToken != null && !requestToken.isBlank() && !Objects.equals(requestToken, storedToken)) {
-                    throw new BizException(ErrorCode.INVALID_PARAM, "invalid entry token");
+                    throw new BizException(ErrorCode.INVALID_PARAM, "入场凭证无效");
                 }
                 long quotaCount = getOrInitQuotaCount(id);
                 if (quotaCount >= model.getQuotaTotal()) {
-                    throw new BizException(ErrorCode.QUOTA_FULL, "quota full");
+                    throw new BizException(ErrorCode.QUOTA_FULL, "问卷名额已满");
                 }
             }
 
             if (previewMode) {
                 String submitTime = nowText();
-                logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE", "preview submit surveyId=" + id);
+                logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE",
+                        "预览提交 " + formatSurveyTarget(id, model.getTitle()));
                 return new SubmitSurveyResponse(id, submitTime);
             }
 
@@ -266,7 +282,9 @@ public class LocalSurveyService implements SurveyServiceApi {
                             descriptionSnapshot,
                             schemaSnapshot,
                             answerCopy,
-                            submitTime
+                            submitTime,
+                            safeIp,
+                            safeUserAgent
                     );
                     surveyAnswers.put(principal.userId(), created);
                     inserted = true;
@@ -276,7 +294,9 @@ public class LocalSurveyService implements SurveyServiceApi {
                             descriptionSnapshot,
                             schemaSnapshot,
                             answerCopy,
-                            submitTime
+                            submitTime,
+                            safeIp,
+                            safeUserAgent
                     ));
                 }
             } else {
@@ -289,7 +309,9 @@ public class LocalSurveyService implements SurveyServiceApi {
                         descriptionSnapshot,
                         schemaSnapshot,
                         answerCopy,
-                        submitTime
+                        submitTime,
+                        safeIp,
+                        safeUserAgent
                 );
                 surveyAnswers.put(principal.userId(), created);
                 inserted = true;
@@ -301,7 +323,8 @@ public class LocalSurveyService implements SurveyServiceApi {
             }
 
             saveSurveyStore();
-            logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE", "submit surveyId=" + id);
+            logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE",
+                    "提交答卷 " + formatSurveyTarget(id, model.getTitle()));
             return new SubmitSurveyResponse(id, submitTime);
         } finally {
             releaseSubmitLock(id, principal.userId());
@@ -335,7 +358,7 @@ public class LocalSurveyService implements SurveyServiceApi {
         Map<Long, SurveyAnswerRecord> surveyAnswers = answerStore.getOrDefault(id, Collections.emptyMap());
         SurveyAnswerRecord record = surveyAnswers.get(principal.userId());
         if (record == null) {
-            throw new BizException(ErrorCode.NOT_FOUND, "未找到已提交记录");
+            throw new BizException(ErrorCode.NOT_FOUND, "答卷不存在");
         }
 
         return new MySurveySubmissionDetailResponse(
@@ -357,8 +380,40 @@ public class LocalSurveyService implements SurveyServiceApi {
                 model.getId(),
                 model.getTitle(),
                 model.getDescription(),
+                countAnswers(id),
                 cloneSchema(model.getSchema()),
                 statsList
+        );
+    }
+
+    @Override
+    public SurveyResponseListResponse listSurveyResponses(UserPrincipal principal, Long id) {
+        SurveyModel model = getSurvey(id);
+        ensureCanManageSurvey(principal, model.getId(), model.getCreatorId());
+
+        List<SurveyResponseItemResponse> responses = answerStore
+                .getOrDefault(id, Collections.emptyMap())
+                .values()
+                .stream()
+                .sorted(Comparator.comparing(SurveyAnswerRecord::submitTime).reversed())
+                .map(record -> new SurveyResponseItemResponse(
+                        record.userId(),
+                        record.username(),
+                        record.realName(),
+                        record.submitTime(),
+                        resolveTerminalType(record.userAgent()),
+                        resolveSourceType(record.userAgent()),
+                        str(record.sourceIp()),
+                        deepCopyMap(record.answers())
+                ))
+                .toList();
+
+        return new SurveyResponseListResponse(
+                model.getId(),
+                model.getTitle(),
+                model.getDescription(),
+                cloneSchema(model.getSchema()),
+                responses
         );
     }
 
@@ -368,12 +423,12 @@ public class LocalSurveyService implements SurveyServiceApi {
         ensureCanManageSurvey(principal, model.getId(), model.getCreatorId());
 
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            Sheet sheet = workbook.createSheet("答卷明细");
+            Sheet sheet = workbook.createSheet("答卷导出");
             Row header = sheet.createRow(0);
             int headerCol = 0;
             header.createCell(headerCol++).setCellValue("提交时间");
-            header.createCell(headerCol++).setCellValue("账号");
-            header.createCell(headerCol++).setCellValue("用户名");
+            header.createCell(headerCol++).setCellValue("用户账号");
+            header.createCell(headerCol++).setCellValue("用户姓名");
             for (Map<String, Object> question : model.getSchema()) {
                 header.createCell(headerCol++).setCellValue(str(question.get("title")));
             }
@@ -392,7 +447,7 @@ public class LocalSurveyService implements SurveyServiceApi {
                     if (value == null) {
                         row.createCell(col++).setCellValue("");
                     } else if (value instanceof List<?> list) {
-                        row.createCell(col++).setCellValue(String.join("、", list.stream().map(String::valueOf).toList()));
+                        row.createCell(col++).setCellValue(String.join("；", list.stream().map(String::valueOf).toList()));
                     } else {
                         row.createCell(col++).setCellValue(String.valueOf(value));
                     }
@@ -400,10 +455,11 @@ public class LocalSurveyService implements SurveyServiceApi {
             }
 
             workbook.write(out);
-            logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE", "export surveyId=" + id);
+            logService.appendSystemLog(principal.username(), "SURVEY", "UPDATE",
+                    "导出答卷 " + formatSurveyTarget(id, model.getTitle()));
             return out.toByteArray();
         } catch (Exception e) {
-            throw new BizException(ErrorCode.SERVER_ERROR, "export failed: " + e.getMessage());
+            throw new BizException(ErrorCode.SERVER_ERROR, "导出答卷失败: " + e.getMessage());
         }
     }
 
@@ -436,7 +492,7 @@ public class LocalSurveyService implements SurveyServiceApi {
         model.getAuthUsers().add(item);
         saveSurveyStore();
         logService.appendSystemLog(principal.username(), "PERMISSION", "UPDATE",
-                "grant surveyId=" + id + ", userId=" + target.getId());
+                "授权用户ID-" + target.getId() + " " + formatSurveyTarget(id, model.getTitle()));
     }
 
     @Override
@@ -446,13 +502,13 @@ public class LocalSurveyService implements SurveyServiceApi {
         model.getAuthUsers().removeIf(item -> Objects.equals(item.userId(), userId));
         saveSurveyStore();
         logService.appendSystemLog(principal.username(), "PERMISSION", "UPDATE",
-                "revoke surveyId=" + id + ", userId=" + userId);
+                "取消授权用户ID-" + userId + " " + formatSurveyTarget(id, model.getTitle()));
     }
 
     private SurveyModel getSurvey(Long id) {
         SurveyModel model = surveyStore.get(id);
         if (model == null) {
-            throw new BizException(ErrorCode.NOT_FOUND, "survey not found");
+            throw new BizException(ErrorCode.NOT_FOUND, "问卷不存在");
         }
         String repairedTitle = SurveyTitleCodec.repairLegacyTitle(model.getTitle(), model.getId());
         if (!Objects.equals(repairedTitle, model.getTitle())) {
@@ -464,16 +520,16 @@ public class LocalSurveyService implements SurveyServiceApi {
 
     private void ensureCanManageSurvey(UserPrincipal principal, Long surveyId, Long creatorId) {
         if (!canAccessSurvey(principal, surveyId, creatorId)) {
-            throw new BizException(ErrorCode.FORBIDDEN, "forbidden");
+            throw new BizException(ErrorCode.FORBIDDEN, "无权限管理该问卷");
         }
     }
 
     private void ensureSurveyReadableByPrincipal(UserPrincipal principal, SurveyModel model) {
         if ("DELETED".equals(model.getStatus())) {
-            throw new BizException(ErrorCode.NOT_FOUND, "survey not found");
+            throw new BizException(ErrorCode.NOT_FOUND, "问卷不存在");
         }
         if (!"PUBLISHED".equals(model.getStatus()) && !isManagerRole(principal)) {
-            throw new BizException(ErrorCode.NOT_FOUND, "survey not found");
+            throw new BizException(ErrorCode.NOT_FOUND, "问卷不存在");
         }
     }
 
@@ -595,7 +651,9 @@ public class LocalSurveyService implements SurveyServiceApi {
                         str(item.get("surveyDescriptionSnapshot")),
                         schemaSnapshot,
                         answerData,
-                        str(item.getOrDefault("submitTime", nowText()))
+                        str(item.getOrDefault("submitTime", nowText())),
+                        str(item.get("sourceIp")),
+                        str(item.get("userAgent"))
                 );
 
                 answerStore
@@ -609,8 +667,9 @@ public class LocalSurveyService implements SurveyServiceApi {
                 saveSurveyStore();
             }
         } catch (Exception ignored) {
-            // nodeps 下本地持久化失败不阻断服务启动
+            // nodeps 模式忽略本地存储读取错误
         }
+
     }
 
     private static Path resolveSurveyStoreReadPath() {
@@ -668,6 +727,8 @@ public class LocalSurveyService implements SurveyServiceApi {
                                 item.put("surveySchemaSnapshot", cloneSchema(record.surveySchemaSnapshot()));
                                 item.put("answers", deepCopyMap(record.answers()));
                                 item.put("submitTime", record.submitTime());
+                                item.put("sourceIp", record.sourceIp());
+                                item.put("userAgent", record.userAgent());
                                 return item;
                             }))
                     .sorted((a, b) -> {
@@ -687,8 +748,9 @@ public class LocalSurveyService implements SurveyServiceApi {
 
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(SURVEY_STORE_FILE.toFile(), snapshot);
         } catch (Exception ignored) {
-            // nodeps 下本地持久化失败不阻断主流程
+            // nodeps 模式忽略本地存储保存错误
         }
+
     }
 
     private static SurveyDetailResponse toDetail(SurveyModel model) {
@@ -859,7 +921,7 @@ public class LocalSurveyService implements SurveyServiceApi {
                 }
                 row.put("rateStats", rateStats);
             } else {
-                List<String> samples = new ArrayList<>();
+                LinkedHashSet<String> unique = new LinkedHashSet<>();
                 for (Map<String, Object> answer : answers) {
                     Object value = answer.get(questionId);
                     if (value == null) {
@@ -867,10 +929,15 @@ public class LocalSurveyService implements SurveyServiceApi {
                     }
                     String text = String.valueOf(value).trim();
                     if (!text.isBlank()) {
-                        samples.add(text);
+                        unique.add(text);
                     }
                 }
-                String summary = samples.isEmpty() ? "" : String.join("; ", samples.stream().limit(3).toList());
+                List<String> allAnswers = new ArrayList<>(unique);
+                List<String> samples = allAnswers.stream().limit(TEXT_SAMPLE_LIMIT).toList();
+                row.put("textSamples", samples);
+                row.put("textAnswers", allAnswers);
+                row.put("textCount", allAnswers.size());
+                String summary = allAnswers.isEmpty() ? "暂无文本回答" : String.join("；", samples);
                 row.put("textSummary", summary);
             }
 
@@ -925,6 +992,70 @@ public class LocalSurveyService implements SurveyServiceApi {
 
     private static String nowText() {
         return LocalDateTime.now().format(DATE_TIME_FORMATTER);
+    }
+
+    private static String formatSurveyTarget(Long id, String title) {
+        String safeTitle = title == null ? "" : title.trim();
+        if (safeTitle.isBlank()) {
+            return "问卷ID-" + id;
+        }
+        return "问卷ID-" + safeTitle;
+    }
+
+    private static String resolveTerminalType(String userAgent) {
+        if (userAgent == null || userAgent.isBlank()) {
+            return "未知";
+        }
+        String ua = userAgent.toLowerCase(Locale.ROOT);
+        if (ua.contains("openharmony") || ua.contains("harmony") || ua.contains("arkweb") || ua.contains("hmos")) {
+            return "鸿蒙";
+        }
+        if (ua.contains("ipad") || ua.contains("tablet")) {
+            return "平板";
+        }
+        if (ua.contains("mobile") || ua.contains("android") || ua.contains("iphone")) {
+            return "移动端";
+        }
+        return "PC";
+    }
+
+    private static String resolveSourceType(String userAgent) {
+        if (userAgent == null || userAgent.isBlank()) {
+            return "直接链接";
+        }
+        String ua = userAgent.toLowerCase(Locale.ROOT);
+        if (ua.contains("micromessenger")) {
+            return "微信";
+        }
+        return "直接链接";
+    }
+
+    private static String normalizeIp(String ip) {
+        if (ip == null) {
+            return null;
+        }
+        String text = ip.trim();
+        if (text.isBlank()) {
+            return null;
+        }
+        if (text.length() > 45) {
+            return text.substring(0, 45);
+        }
+        return text;
+    }
+
+    private static String normalizeUserAgent(String userAgent) {
+        if (userAgent == null) {
+            return null;
+        }
+        String text = userAgent.trim();
+        if (text.isBlank()) {
+            return null;
+        }
+        if (text.length() > 255) {
+            return text.substring(0, 255);
+        }
+        return text;
     }
 
     private static String str(Object value) {
@@ -1005,13 +1136,17 @@ public class LocalSurveyService implements SurveyServiceApi {
             String surveyDescriptionSnapshot,
             List<Map<String, Object>> surveySchemaSnapshot,
             Map<String, Object> answers,
-            String submitTime
+            String submitTime,
+            String sourceIp,
+            String userAgent
     ) {
         private SurveyAnswerRecord withAnswers(String titleSnapshot,
                                                String descriptionSnapshot,
                                                List<Map<String, Object>> schemaSnapshot,
                                                Map<String, Object> newAnswers,
-                                               String newSubmitTime) {
+                                               String newSubmitTime,
+                                               String nextIp,
+                                               String nextUserAgent) {
             return new SurveyAnswerRecord(
                     userId,
                     username,
@@ -1020,7 +1155,9 @@ public class LocalSurveyService implements SurveyServiceApi {
                     descriptionSnapshot,
                     schemaSnapshot,
                     newAnswers,
-                    newSubmitTime
+                    newSubmitTime,
+                    nextIp,
+                    nextUserAgent
             );
         }
     }
@@ -1028,3 +1165,5 @@ public class LocalSurveyService implements SurveyServiceApi {
     private record EntryTokenRecord(String token, long expireAtMillis) {
     }
 }
+
+

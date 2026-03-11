@@ -18,10 +18,12 @@ import SurveyList from '../views/admin/SurveyList.vue'
 import CreateSurvey from '../views/admin/CreateSurvey.vue'
 import EditSurvey from '../views/admin/EditSurvey.vue'
 import SurveyStats from '../views/admin/SurveyStats.vue'
+import SurveyResponses from '../views/admin/SurveyResponses.vue'
 import SurveyAuth from '../views/admin/SurveyAuth.vue'
 import UserManagement from '../views/admin/UserManagement.vue'
 import PermissionManagement from '../views/admin/PermissionManagement.vue'
 import LogManagement from '../views/admin/LogManagement.vue'
+import LogCenter from '../views/admin/LogCenter.vue'
 import SystemSettings from '../views/admin/SystemSettings.vue'
 import ChangePassword from '../views/admin/ChangePassword.vue'
 import BasicSettings from '../views/admin/settings/BasicSettings.vue'
@@ -129,6 +131,10 @@ const routes = [
         component: SurveyStats
       },
       {
+        path: 'surveys/:id/responses',
+        component: SurveyResponses
+      },
+      {
         path: 'surveys/:id/auth',
         component: SurveyAuth,
         meta: {
@@ -145,7 +151,27 @@ const routes = [
       },
       {
         path: 'logs',
-        component: LogManagement
+        component: LogCenter,
+        children: [
+          {
+            path: '',
+            redirect: '/admin/logs/system'
+          },
+          {
+            path: 'system',
+            component: LogManagement,
+            props: {
+              logType: 'SYSTEM'
+            }
+          },
+          {
+            path: 'user',
+            component: LogManagement,
+            props: {
+              logType: 'USER'
+            }
+          }
+        ]
       },
       {
         path: 'password',

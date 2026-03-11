@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
@@ -6,6 +6,14 @@ import { logoutApi } from '../../api/auth'
 import { useSettingsStore } from '../../stores/settings'
 import { appendOperationLog } from '../../utils/log'
 import { setLogoutContext } from '../../utils/logout-context'
+import {
+  DataAnalysis,
+  Document,
+  Key,
+  Setting,
+  Tickets,
+  User
+} from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -28,6 +36,10 @@ const pageTitle = computed(() => {
   return '问卷管理'
 })
 
+function isActive(prefix: string) {
+  return route.path.startsWith(prefix)
+}
+
 function goDashboard() {
   router.push('/admin/dashboard')
 }
@@ -45,7 +57,7 @@ function goPermissions() {
 }
 
 function goLogs() {
-  router.push('/admin/logs')
+  router.push('/admin/logs/system')
 }
 
 function goSettings() {
@@ -83,152 +95,91 @@ async function handleLogout() {
 </script>
 
 <template>
-  <div style="min-height: 100vh; background: #f5f7fa; display: flex;">
-    <aside
-      style="
-        width: 220px;
-        background: #001529;
-        color: #fff;
-        padding: 20px 0;
-        box-sizing: border-box;
-      "
-    >
-      <div
-        style="
-          padding: 0 20px 20px;
-          border-bottom: 1px solid rgba(255,255,255,0.08);
-          margin-bottom: 16px;
-        "
-      >
-        <div
-          style="
-            height: 44px;
-            border-radius: 8px;
-            background: #ffffff;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            border: 1px solid #dbe3ef;
-          "
-        >
+  <div class="admin-layout">
+    <aside class="admin-sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-logo">
           <img
             v-if="adminLogo"
             :src="adminLogo"
             alt="管理后台 Logo"
-            style="max-width: 100%; max-height: 36px; object-fit: contain;"
+            class="sidebar-logo-image"
           >
-          <span v-else style="font-size: 12px; color: #8b95a3; letter-spacing: 0.5px;">
-            LOGO
-          </span>
+          <span v-else class="sidebar-logo-fallback">LOGO</span>
         </div>
 
-        <div style="font-size: 20px; font-weight: 700;">
+        <div class="sidebar-title">
           {{ settingsStore.settings.systemName }}
         </div>
       </div>
 
-      <div style="padding: 0 12px;">
+      <div class="sidebar-menu">
         <div
-          :style="{
-            padding: '12px 14px',
-            borderRadius: '8px',
-            marginBottom: '8px',
-            cursor: 'pointer',
-            background: route.path.startsWith('/admin/dashboard') ? '#1677ff' : 'transparent'
-          }"
+          class="sidebar-item"
+          :class="{ active: isActive('/admin/dashboard') }"
           @click="goDashboard"
         >
-          数据看板
+          <el-icon class="sidebar-item-icon"><DataAnalysis /></el-icon>
+          <span>数据看板</span>
         </div>
 
         <div
-          :style="{
-            padding: '12px 14px',
-            borderRadius: '8px',
-            marginBottom: '8px',
-            cursor: 'pointer',
-            background: route.path.startsWith('/admin/surveys') ? '#1677ff' : 'transparent'
-          }"
+          class="sidebar-item"
+          :class="{ active: isActive('/admin/surveys') }"
           @click="goSurveys"
         >
-          问卷管理
+          <el-icon class="sidebar-item-icon"><Document /></el-icon>
+          <span>问卷管理</span>
         </div>
 
         <div
-          :style="{
-            padding: '12px 14px',
-            borderRadius: '8px',
-            marginBottom: '8px',
-            cursor: 'pointer',
-            background: route.path.startsWith('/admin/users') ? '#1677ff' : 'transparent'
-          }"
+          class="sidebar-item"
+          :class="{ active: isActive('/admin/users') }"
           @click="goUsers"
         >
-          用户管理
+          <el-icon class="sidebar-item-icon"><User /></el-icon>
+          <span>用户管理</span>
         </div>
 
         <div
-          :style="{
-            padding: '12px 14px',
-            borderRadius: '8px',
-            marginBottom: '8px',
-            cursor: 'pointer',
-            background: route.path.startsWith('/admin/permissions') ? '#1677ff' : 'transparent'
-          }"
+          class="sidebar-item"
+          :class="{ active: isActive('/admin/permissions') }"
           @click="goPermissions"
         >
-          授权管理
+          <el-icon class="sidebar-item-icon"><Key /></el-icon>
+          <span>授权管理</span>
         </div>
 
         <div
-          :style="{
-            padding: '12px 14px',
-            borderRadius: '8px',
-            marginBottom: '8px',
-            cursor: 'pointer',
-            background: route.path.startsWith('/admin/logs') ? '#1677ff' : 'transparent'
-          }"
+          class="sidebar-item"
+          :class="{ active: isActive('/admin/logs') }"
           @click="goLogs"
         >
-          日志中心
+          <el-icon class="sidebar-item-icon"><Tickets /></el-icon>
+          <span>日志中心</span>
         </div>
 
         <div
-          :style="{
-            padding: '12px 14px',
-            borderRadius: '8px',
-            marginBottom: '8px',
-            cursor: 'pointer',
-            background: route.path.startsWith('/admin/settings') ? '#1677ff' : 'transparent'
-          }"
+          class="sidebar-item"
+          :class="{ active: isActive('/admin/settings') }"
           @click="goSettings"
         >
-          系统设置
+          <el-icon class="sidebar-item-icon"><Setting /></el-icon>
+          <span>系统设置</span>
         </div>
       </div>
     </aside>
 
-    <div style="flex: 1; min-width: 0;">
-      <header
-        style="
-          height: 64px;
-          background: #fff;
-          border-bottom: 1px solid #eee;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0 24px;
-          box-sizing: border-box;
-        "
-      >
-        <div style="font-size: 18px; font-weight: 700;">
+    <div class="admin-main">
+      <header class="admin-header">
+        <div class="admin-header-title">
           {{ pageTitle }}
         </div>
 
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <span style="color: #666;">{{ authStore.realName || authStore.username || '管理员' }}</span>
+        <div class="admin-header-actions">
+          <span class="admin-user-name">
+            {{ authStore.realName || authStore.username || '管理员' }}
+          </span>
 
           <el-button
             v-if="authStore.localAccount"
@@ -245,9 +196,138 @@ async function handleLogout() {
         </div>
       </header>
 
-      <main style="padding: 24px; box-sizing: border-box;">
+      <main class="admin-content">
         <router-view />
       </main>
     </div>
   </div>
 </template>
+
+<style scoped>
+.admin-layout {
+  --sidebar-width: 228px;
+  min-height: 100vh;
+  background: #f5f7fa;
+}
+
+.admin-sidebar {
+  width: var(--sidebar-width);
+  background: linear-gradient(180deg, #001529 0%, #0a2342 100%);
+  color: #fff;
+  padding: 18px 0;
+  box-sizing: border-box;
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  overflow-y: auto;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.06);
+}
+
+.sidebar-brand {
+  padding: 0 18px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 14px;
+}
+
+.sidebar-logo {
+  height: 44px;
+  border-radius: 10px;
+  background: #ffffff;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid #dbe3ef;
+}
+
+.sidebar-logo-image {
+  max-width: 100%;
+  max-height: 36px;
+  object-fit: contain;
+}
+
+.sidebar-logo-fallback {
+  font-size: 12px;
+  color: #8b95a3;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-menu {
+  padding: 0 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.sidebar-item {
+  padding: 12px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.92);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.sidebar-item.active {
+  background: linear-gradient(135deg, #2f80ff 0%, #1677ff 100%);
+  box-shadow: 0 6px 12px rgba(22, 119, 255, 0.25);
+}
+
+.sidebar-item-icon {
+  font-size: 16px;
+  opacity: 0.9;
+}
+
+.sidebar-item.active .sidebar-item-icon {
+  opacity: 1;
+}
+
+.admin-main {
+  margin-left: var(--sidebar-width);
+  min-width: 0;
+}
+
+.admin-header {
+  height: 64px;
+  background: #fff;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  box-sizing: border-box;
+}
+
+.admin-header-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.admin-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-user-name {
+  color: #666;
+}
+
+.admin-content {
+  padding: 24px;
+  box-sizing: border-box;
+}
+</style>
